@@ -1,0 +1,17 @@
+# Never commit personal health data. Only synthetic fixtures under schema/fixtures/ are allowed.
+*.csv
+*.gpx
+*.zip
+*.json.gz
+!schema/fixtures/**
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+
+# Local viewer config (contains personal profile)
+config.toml
+
+.DS_Store
