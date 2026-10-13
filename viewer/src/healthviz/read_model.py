@@ -196,18 +196,22 @@ def cleanup(cache, keep):
     )
     spill_pattern = r"(?:\.building-)?generation-[0-9a-f]{32}\.duckdb\.tmp"
     for path in cache.iterdir():
-        if re.fullmatch(spill_pattern, path.name):
-            private_path(path, directory=True)
-            for part in path.iterdir():
-                if re.fullmatch(r"duckdb_temp_storage_[A-Za-z0-9_-]+\.tmp", part.name):
-                    private_path(part)
-                    part.unlink()
-            # Unrecognized spill files are kept; never let them block publication.
-            if not any(path.iterdir()):
-                path.rmdir()
-        elif path.name != keep and re.fullmatch(pattern, path.name):
-            private_path(path)
-            path.unlink()
+        # One undeletable entry must not strand the remaining obsolete plaintext copies.
+        try:
+            if re.fullmatch(spill_pattern, path.name):
+                private_path(path, directory=True)
+                for part in path.iterdir():
+                    if re.fullmatch(r"duckdb_temp_storage_[A-Za-z0-9_-]+\.tmp", part.name):
+                        private_path(part)
+                        part.unlink()
+                # Unrecognized spill files are kept; never let them block publication.
+                if not any(path.iterdir()):
+                    path.rmdir()
+            elif path.name != keep and re.fullmatch(pattern, path.name):
+                private_path(path)
+                path.unlink()
+        except OSError:
+            continue
     fsync_directory(cache)
 
 
@@ -238,7 +242,6 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
             cleanup(cache, name)
         except OSError:
             pass  # The new generation is published; leftovers are retried next publication.
-
     finally:
         candidate.unlink(missing_ok=True)
         Path(str(candidate) + ".wal").unlink(missing_ok=True)

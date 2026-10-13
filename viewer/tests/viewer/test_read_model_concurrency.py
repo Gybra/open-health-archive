@@ -185,7 +185,7 @@ def test_cleanup_failure_does_not_fail_a_completed_publication(tmp_path, monkeyp
     root, cache, config = prepare(tmp_path)
     mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     old = cache / json.loads((cache / "current.json").read_bytes())["file"]
-    original = Path.unlink
+    original, listing = Path.unlink, Path.iterdir
 
     def busy(path, *args, **kwargs):
         if path == old:
@@ -200,6 +200,15 @@ def test_cleanup_failure_does_not_fail_a_completed_publication(tmp_path, monkeyp
     with patch.object(mod, "load_archive", side_effect=AssertionError("must be a hit")):
         hit = mod.load_read_model(root, changed, cache_dir=cache, config=config)
     pd.testing.assert_frame_equal(published.daily, hit.daily)
+    stranded = cache / json.loads((cache / "current.json").read_bytes())["file"]
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", busy)
+        # Visit the undeletable copy first so the remaining entries depend on per-entry handling.
+        context.setattr(Path, "iterdir", lambda path: iter(sorted(listing(path), key=old.__ne__)))
+        mod.load_read_model(
+            root, replace(Settings(), worn_hours_threshold=12), cache_dir=cache, config=config
+        )
+    assert old.exists() and not stranded.exists(), "one failure must not strand other copies"
     mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert not old.exists(), "the next publication retries cleanup"
     assert len(list(cache.glob("generation-*.duckdb"))) == 1
