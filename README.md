@@ -77,8 +77,9 @@ HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" docker compose up -d view
 
 Open `http://127.0.0.1:8501`. Without `HEALTHVIZ_ARCHIVE_DIR`, the viewer uses the
 clearly labeled synthetic demonstration archive. Set `HEALTHVIZ_CONFIG_DIR` to choose
-another private settings directory. The archive is mounted read-only. Settings are
-saved separately in `config.toml`; source associations must be explicit, never based
+another private settings directory. The archive is mounted read-only. In the Linux Docker runtime, validated CSV input
+buffers stay in memory and are released after each bounded batch; no temporary CSV
+cache is written to disk. Settings are saved separately in `config.toml`; source associations must be explicit, never based
 on identical model names. Advanced per-device ingest orders can be edited in the
 private TOML `[ingest_priority]` table.
 

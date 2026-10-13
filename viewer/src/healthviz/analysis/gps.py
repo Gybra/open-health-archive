@@ -77,30 +77,29 @@ def haversine(a, b):
     return 2 * 6371008.8 * math.asin(math.sqrt(min(1, distance)))
 
 
+def route_segments(points: pd.DataFrame) -> pd.Series:
+    if points.empty:
+        return pd.Series(dtype=int, index=points.index)
+    gap = points.time.diff().dt.total_seconds()
+    breaks = points.segment.ne(points.segment.shift()) | (
+        gap.notna() & ~gap.between(0, 120, inclusive="right")
+    )
+    return breaks.cumsum()
+
+
 def route_profile(points: pd.DataFrame, hr: pd.DataFrame) -> pd.DataFrame:
     records = points.to_dict("records")
     distance = 0.0
-    run = 0
     history = []
     previous = None
-    for row in records:
-        gap = (
-            None
-            if previous is None or pd.isna(row["time"]) or pd.isna(previous["time"])
-            else (row["time"] - previous["time"]).total_seconds()
-        )
-        connected = (
-            previous is not None
-            and row["segment"] == previous["segment"]
-            and (gap is None or 0 < gap <= 120)
-        )
+    for row, segment in zip(records, route_segments(points), strict=True):
+        untimed = previous is None or pd.isna(row["time"]) or pd.isna(previous["time"])
+        connected = previous is not None and segment == previous["route_segment"]
         if connected:
             distance += haversine(previous, row)
-        if not connected:
-            run += 1
-        if not connected or gap is None:
+        if not connected or untimed:
             history = []
-        row["route_segment"] = run
+        row["route_segment"] = segment
         row["distance_m"] = distance
         row["pace_min_km"] = None
         if pd.notna(row["time"]):

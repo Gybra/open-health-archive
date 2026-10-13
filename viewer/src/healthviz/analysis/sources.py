@@ -72,7 +72,10 @@ def annotate(rows, metric, settings):
 def split_intervals(frame, boundaries):
     output = []
     remove = []
-    for index, row in frame.iterrows():
+    crosses = boundaries.searchsorted(frame.end_utc, side="left") > boundaries.searchsorted(
+        frame.start_utc, side="right"
+    )
+    for index, row in frame.loc[crosses].iterrows():
         left = boundaries.searchsorted(row.start_utc, side="right")
         right = boundaries.searchsorted(row.end_utc, side="left")
         if right <= left:
@@ -251,12 +254,18 @@ def resolve_rows(
     audit["selected"] = audit["_row"].isin(selected["_row"])
     audit["reason"] = audit["selected"].map({True: "selected", False: "lower priority"})
     if hour_audits:
-        winners = (
+        records = (
             pd.concat(hour_audits)
-            .groupby("_row")["winner_id"]
-            .agg(lambda s: ", ".join(sorted(set(s.dropna()))))
+            .dropna(subset=["winner_id"])
+            .drop_duplicates(["_row", "winner_id"])
+            .sort_values("winner_id")
         )
-        audit["winner_id"] = audit["_row"].map(winners)
+        winners = records.drop_duplicates("_row").set_index("_row").winner_id.copy()
+        multiple = records.loc[records._row.duplicated(keep=False)]
+        if not multiple.empty:
+            combined = multiple.groupby("_row").winner_id.agg(", ".join)
+            winners.loc[combined.index] = combined
+        audit["winner_id"] = audit["_row"].map(winners).fillna("")
     else:
         audit["winner_id"] = ""
         for index, row in audit.iterrows():

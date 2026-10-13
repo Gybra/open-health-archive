@@ -3,7 +3,7 @@ from datetime import timedelta
 import pandas as pd
 import streamlit as st
 
-from healthviz.analysis.gps import map_deck, route_profile
+from healthviz.analysis.gps import map_deck, route_segments
 from healthviz.dashboard.charts import summary_table
 from healthviz.dashboard.workouts import cached_tracks, workout_filter
 
@@ -16,21 +16,29 @@ def render(tables, daily, settings, *, start, end, archive, offline):
             "Ambiguous same-source overlapping workouts are excluded from map density and totals."
         )
     paths = set(reliable.track_file.dropna()) - {""}
-    tracks = cached_tracks(archive, paths)
-    parts = []
-    for path, points in tracks.items():
-        if points is None or points.empty:
-            continue
-        profile = route_profile(points, pd.DataFrame())
-        profile["route_segment"] = str(path) + ":" + profile.route_segment.astype(str)
-        parts.append(profile)
-    if not parts:
+    key = (st.session_state["snapshot"][0], frozenset(paths), offline)
+    context = st.session_state.get("heatmap")
+    if context is None or context[0] != key:
+        tracks = cached_tracks(archive, paths)
+        parts = []
+        for path, points in tracks.items():
+            if points is None or points.empty:
+                continue
+            profile = points.assign(route_segment=route_segments(points))
+            profile["route_segment"] = str(path) + ":" + profile.route_segment.astype(str)
+            parts.append(profile)
+        deck = (
+            map_deck(pd.concat(parts, ignore_index=True), offline=offline, coloring="density")
+            if parts
+            else None
+        )
+        context = (key, deck)
+        st.session_state["heatmap"] = context
+    _, deck = context
+    if deck is None:
         st.info("No valid tracks match these filters.")
     else:
-        points = pd.concat(parts, ignore_index=True)
-        st.pydeck_chart(
-            map_deck(points, offline=offline, coloring="density"), key="archive-heatmap"
-        )
+        st.pydeck_chart(deck, key="archive-heatmap")
         st.caption(
             "Route density: one point every 25 m, not GPS sampling frequency. "
             "Separate tracks and gaps are never connected. OSM attribution applies "

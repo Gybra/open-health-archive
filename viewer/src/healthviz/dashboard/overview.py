@@ -27,11 +27,16 @@ def render(tables, daily, settings, *, start, end):
         "Coverage · local hours with HR samples",
         "hours with samples",
     )
-    sessions, _ = resolve_rows(
-        "sleep_sessions", tables["sleep_sessions"], tables["devices"], settings
-    )
-    workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
-    sleep = sleep_summary(sessions, tables["sleep_stages"])
+    key = st.session_state["snapshot"][0]
+    context = st.session_state.get("overview_sources")
+    if context is None or context[0] != key:
+        sessions, _ = resolve_rows(
+            "sleep_sessions", tables["sleep_sessions"], tables["devices"], settings
+        )
+        workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
+        context = (key, sleep_summary(sessions, tables["sleep_stages"]), workouts)
+        st.session_state["overview_sources"] = context
+    _, sleep, workouts = context
     st.subheader("Personal-baseline observations")
     messages = observations(daily, sleep, workouts, end)
     if not messages:

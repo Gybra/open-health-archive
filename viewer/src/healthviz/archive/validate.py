@@ -1,5 +1,6 @@
 import csv
 import hashlib
+import io
 import json
 import math
 import re
@@ -72,13 +73,13 @@ def validate_row(t: Table, row: Row) -> list[str]:
     return errors
 
 
-def check_csv(root: Path, path: Path, seen: set) -> list[str]:
+def check_csv(root: Path, path: Path, seen: set, data: bytes) -> list[str]:
     rel = path.relative_to(root).as_posix()
     name = rel.split("/")[0].removesuffix(".csv")
     if name not in TABLES:
         return [f"{rel}: unknown table"]
     t, errors = TABLES[name], []
-    with path.open(newline="", encoding="utf-8") as f:
+    with io.StringIO(data.decode("utf-8"), newline="") as f:
         reader = csv.DictReader(f)
         if reader.fieldnames != list(t.columns):
             return [f"{rel}:1: header mismatch"]
@@ -101,13 +102,8 @@ def archive_files(root: Path) -> list[Path]:
     return sorted([*root.rglob("*.csv"), *root.glob("tracks/*.gpx")])
 
 
-def validate_archive(root: Path) -> list[str]:
-    files, errors, seen = archive_files(root), [], set()
-    if any(p.is_symlink() for p in root.rglob("*")):
-        return ["archive: symlinks are not allowed"]
-    for p in files:
-        if p.suffix == ".csv":
-            errors.extend(check_csv(root, p, seen))
+def check_manifest(root: Path, files: list[Path]) -> list[str]:
+    errors = []
     try:
         manifest = json.loads((root / "manifest.json").read_text())
         if manifest["schema_version"] != SCHEMA_VERSION:
@@ -125,3 +121,13 @@ def validate_archive(root: Path) -> list[str]:
     except (OSError, ValueError, KeyError, TypeError):
         errors.append("manifest: missing or invalid")
     return errors
+
+
+def validate_archive(root: Path) -> list[str]:
+    files, errors, seen = archive_files(root), [], set()
+    if any(p.is_symlink() for p in root.rglob("*")):
+        return ["archive: symlinks are not allowed"]
+    for p in files:
+        if p.suffix == ".csv":
+            errors.extend(check_csv(root, p, seen, p.read_bytes()))
+    return errors + check_manifest(root, files)

@@ -5,7 +5,7 @@ import pandas as pd
 
 from healthviz.analysis.heart import resting_from_sleep
 from healthviz.analysis.sleep import sleep_summary
-from healthviz.analysis.sources import annotate, resolve_rows, source_rank
+from healthviz.analysis.sources import resolve_rows, source_rank
 from healthviz.analysis.workouts import split_workout_days
 from healthviz.archive.values import parse_offset
 from healthviz.settings import Settings
@@ -115,7 +115,11 @@ def daily_summary(
         )
     apply_fallback(days, tables, devices, settings)
     eligible_nights = (
-        nights.loc[nights.date_local.map(lambda day: days[day]["complete"])]
+        nights.loc[
+            nights.date_local.map(
+                lambda day: days[day]["complete"] and pd.isna(days[day]["resting_hr"])
+            )
+        ]
         if not nights.empty
         else nights
     )
@@ -150,16 +154,26 @@ def set_metric(row, metric, value, source):
 def raw_days(frame, metric, settings):
     if frame.empty:
         return set()
-    rows = annotate(frame, metric, settings)
-    days = set(rows.date_local)
+    offsets = frame.utc_offset.map(
+        {v: pd.Timedelta(minutes=parse_offset(v)) for v in frame.utc_offset.unique()}
+    )
+    stamp = (
+        "end_utc"
+        if metric == "sleep_sessions"
+        else "time_utc"
+        if "time_utc" in frame
+        else "start_utc"
+    )
+    days = set((frame[stamp] + offsets).dt.date)
     if metric in ("steps", "distance", "calories"):
-        for row in rows.itertuples():
-            offset = pd.Timedelta(minutes=parse_offset(row.utc_offset))
-            start, end = (
-                (row.start_utc + offset).date(),
-                (row.end_utc + offset - pd.Timedelta(microseconds=1)).date(),
-            )
-            days.update(d.date() for d in pd.date_range(start, end))
+        ranges = pd.DataFrame(
+            {
+                "start": (frame.start_utc + offsets).dt.date,
+                "end": (frame.end_utc + offsets - pd.Timedelta(microseconds=1)).dt.date,
+            }
+        ).drop_duplicates()
+        for row in ranges.loc[ranges.start != ranges.end].itertuples():
+            days.update(d.date() for d in pd.date_range(row.start, row.end))
     return days
 
 

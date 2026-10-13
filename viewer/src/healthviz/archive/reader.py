@@ -1,11 +1,15 @@
+import fcntl
 import hashlib
+import json
+import os
+from contextlib import ExitStack
 from pathlib import Path
 
 import duckdb
 import pandas as pd
 
 from healthviz.archive.schema import COLUMN_KINDS, TABLES
-from healthviz.archive.validate import archive_files, validate_archive
+from healthviz.archive.validate import archive_files, check_csv, check_manifest
 
 
 class ArchiveReadError(Exception):
@@ -41,32 +45,75 @@ def typed_frame(frame: pd.DataFrame) -> pd.DataFrame:
     return frame
 
 
+def sealed_csv(root, path, expected_hash, seen, buffers):
+    data = path.read_bytes()
+    if check_csv(root, path, seen, data) or hashlib.sha256(data).hexdigest() != expected_hash:
+        raise ArchiveReadError(
+            "archive: validation failed; finish sync or rebuild into a new folder"
+        )
+    # Linux sealed anonymous buffers bind validation and DuckDB to identical bytes.
+    fd = os.memfd_create("healthviz-csv", os.MFD_CLOEXEC | os.MFD_ALLOW_SEALING)
+    buffer = buffers.enter_context(os.fdopen(fd, "w+b"))
+    buffer.write(data)
+    buffer.flush()
+    fcntl.fcntl(
+        fd,
+        fcntl.F_ADD_SEALS,
+        fcntl.F_SEAL_WRITE | fcntl.F_SEAL_GROW | fcntl.F_SEAL_SHRINK | fcntl.F_SEAL_SEAL,
+    )
+    return f"/proc/self/fd/{fd}"
+
+
 def load_archive(root: Path) -> dict[str, pd.DataFrame]:
     try:
         token = archive_token(root)
-        if validate_archive(root):
+        files = archive_files(root)
+        manifest = json.loads((root / "manifest.json").read_bytes())
+        hashes = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
+        if check_manifest(root, files):
             raise ArchiveReadError(
                 "archive: validation failed; finish sync or rebuild into a new folder"
             )
-        frames = {}
+        frames, paths_by_table, seen = {}, {}, set()
+        for path in files:
+            if path.suffix == ".csv":
+                name = path.relative_to(root).parts[0].removesuffix(".csv")
+                if name not in TABLES:
+                    raise ArchiveReadError("archive: validation failed; unknown table")
+                paths_by_table.setdefault(name, []).append(path)
         with duckdb.connect() as conn:
             for name, table in TABLES.items():
-                paths = [
-                    str(p)
-                    for p in archive_files(root)
-                    if p.suffix == ".csv"
-                    and (p.stem if p.parent == root else p.parent.name) == name
-                ]
+                sources, parts = paths_by_table.get(name, []), []
+                # Bound open descriptors and close each batch after materialization.
+                for start in range(0, len(sources), 16):
+                    with ExitStack() as buffers:
+                        paths = [
+                            sealed_csv(
+                                root, path, hashes[path.relative_to(root).as_posix()], seen, buffers
+                            )
+                            for path in sources[start : start + 16]
+                        ]
+                        parts.append(
+                            conn.read_csv(
+                                paths,
+                                header=True,
+                                auto_detect=False,
+                                columns=dict.fromkeys(table.columns, "VARCHAR"),
+                            ).fetchdf()
+                        )
                 frame = (
-                    conn.read_csv(
-                        paths, header=True, columns=dict.fromkeys(table.columns, "VARCHAR")
-                    ).fetchdf()
-                    if paths
+                    pd.concat(parts, ignore_index=True)
+                    if parts
                     else pd.DataFrame(columns=table.columns)
                 )
                 frames[name] = typed_frame(frame)
         # Writers replace files individually. Never cache a mixed or still-changing snapshot.
-        if validate_archive(root) or archive_token(root) != token:
+        # Unchanged checksums preserve validated rows; do not parse every CSV again.
+        if (
+            archive_token(root) != token
+            or check_manifest(root, archive_files(root))
+            or archive_token(root) != token
+        ):
             raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
         ids = set(frames["devices"]["device_id"])
         if any(
