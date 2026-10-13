@@ -18,7 +18,13 @@ def read_track(archive: Path, relative_path: str) -> pd.DataFrame:
             or (archive / "tracks").is_symlink()
         ):
             raise ValueError
-        data = track_bytes(archive / relative_path)
+        return parse_track(track_bytes(archive / relative_path))
+    except (OSError, ValueError):
+        raise ValueError("track: invalid or unavailable GPX") from None
+
+
+def parse_track(data: bytes) -> pd.DataFrame:
+    try:
         validate_gpx(data)
         root = ET.fromstring(data)
         output = []
@@ -90,13 +96,15 @@ def route_profile(points: pd.DataFrame, hr: pd.DataFrame) -> pd.DataFrame:
         )
         if connected:
             distance += haversine(previous, row)
-        if not connected or gap is None:
+        if not connected:
             run += 1
+        if not connected or gap is None:
             history = []
         row["route_segment"] = run
         row["distance_m"] = distance
         row["pace_min_km"] = None
         if pd.notna(row["time"]):
+            history.append((row["time"], distance))
             cutoff = row["time"] - pd.Timedelta(seconds=30)
             if history and history[0][0] <= cutoff:
                 while len(history) > 1 and history[1][0] <= cutoff:
@@ -111,7 +119,6 @@ def route_profile(points: pd.DataFrame, hr: pd.DataFrame) -> pd.DataFrame:
                 delta = distance - base_distance
                 if delta > 0:
                     row["pace_min_km"] = 0.5 / (delta / 1000)
-            history.append((row["time"], distance))
         previous = row
     frame = pd.DataFrame(
         records, columns=[*points.columns, "route_segment", "distance_m", "pace_min_km"]

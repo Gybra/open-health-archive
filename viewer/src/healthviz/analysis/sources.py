@@ -26,7 +26,7 @@ def source_rank(metric, source, devices, settings):
     )
     return (
         explicit,
-        kind_order.index(kinds.get(physical, "other")),
+        kind_order.index(kinds.get(device, "other")),
         ingest_rank,
         ingest,
         device,
@@ -60,7 +60,9 @@ def annotate(rows, metric, settings):
     else:
         frame["hour_start_utc"] = pd.NaT
     if "start_utc" in frame:
-        for _, group in frame.groupby(SOURCE, dropna=False):
+        for _, group in frame.groupby(
+            [*SOURCE, "kind"] if metric == "calories" else SOURCE, dropna=False
+        ):
             group = group.sort_values("start_utc")
             bad = group.start_utc < group.end_utc.cummax().shift()
             frame.loc[group.index[bad | bad.shift(-1, fill_value=False)], "quality"] = "ambiguous"
@@ -206,9 +208,15 @@ def resolve_rows(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     settings.check_devices(set(devices.device_id))
     if rows.empty:
-        return pd.DataFrame(
-            columns=[*rows.columns, *[c for c in EXTRA if c not in rows]]
-        ), pd.DataFrame(columns=[*rows.columns, "selected", "reason", "winner_id"])
+        frame = rows.copy()
+        for column in EXTRA:
+            frame[column] = pd.Series(
+                dtype={
+                    "hour_start_utc": "datetime64[ns, UTC]",
+                    "allocation_estimated": "bool",
+                }.get(column, "object")
+            )
+        return frame, frame.assign(selected=pd.Series(dtype=bool), reason="", winner_id="")
     frame = annotate(rows, metric, settings)
     hour_audits = []
     if metric == "calories":

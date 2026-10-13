@@ -28,7 +28,9 @@ def render(tables, daily, settings, *, start, end):
             .groupby("date_local")
             .size()
         )
-        audit = audit.loc[audit.date_local.isin(sources.loc[sources > 1].index)]
+        audit = audit.loc[
+            audit.date_local.isin(sources.loc[sources > 1].index) | audit.quality.eq("ambiguous")
+        ]
     st.caption(
         "Original source values are compared, never added. Priority chooses one "
         "source per local hour, overlapping session or local day. Lower-priority "

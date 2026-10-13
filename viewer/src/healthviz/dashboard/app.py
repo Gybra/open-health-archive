@@ -23,6 +23,21 @@ PAGES = {
 
 def settings_form(settings, devices, config):
     with st.sidebar.expander("Personal settings and source priorities"):
+        metric = st.selectbox(
+            "Priority metric",
+            [
+                "heart_rate",
+                "steps",
+                "distance",
+                "active_kcal",
+                "total_kcal",
+                "sleep_sessions",
+                "workouts",
+                "resting_heart_rate",
+                "weight",
+                "spo2",
+            ],
+        )
         with st.form("settings"):
             birth = st.number_input(
                 "Birth year (0 = unknown)",
@@ -41,25 +56,11 @@ def settings_form(settings, devices, config):
             )
             timezone = st.text_input("Fallback timezone (IANA)", settings.default_timezone)
             ids = devices.device_id.tolist()
-            metric = st.selectbox(
-                "Priority metric",
-                [
-                    "heart_rate",
-                    "steps",
-                    "distance",
-                    "active_kcal",
-                    "total_kcal",
-                    "sleep_sessions",
-                    "workouts",
-                    "resting_heart_rate",
-                    "weight",
-                    "spo2",
-                ],
-            )
             order = st.multiselect(
                 "Preferred devices (selection order)",
                 ids,
                 default=settings.priority.get(metric, []),
+                key="priority-" + metric,
             )
             st.caption(
                 "Defaults: watches before phones; vendor exports before Health Connect. "
@@ -139,6 +140,7 @@ def main():
         return
     dates = st.sidebar.date_input(
         "Period",
+        format="YYYY-MM-DD",
         value=(daily.date_local.min(), daily.date_local.max()),
         min_value=daily.date_local.min(),
         max_value=daily.date_local.max(),

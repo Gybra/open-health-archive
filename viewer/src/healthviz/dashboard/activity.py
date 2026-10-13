@@ -13,7 +13,7 @@ def render(tables, daily, settings, *, start, end):
         ("active_kcal", "Active calories", "kcal"),
         ("total_kcal", "Total calories", "kcal"),
     ]:
-        show_trend(frame, metric, title, unit)
+        show_trend(daily, metric, title, unit, start=start, end=end)
     st.caption(
         "Active and total calories are different measures, never added. Workouts are "
         "not added to daily calories; no calorie balance is computed."

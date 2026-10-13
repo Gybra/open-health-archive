@@ -40,11 +40,23 @@ def render(tables, daily, settings, *, start, end):
             if metric == "heart_rate"
             else resolved.start_utc
         )
-        fig = go.Figure(go.Scatter(x=x, y=resolved[col], mode="lines+markers", connectgaps=False))
+        fig = go.Figure()
+        groups = resolved.groupby("kind") if metric == "calories" else [(label, resolved)]
+        for name, group in groups:
+            fig.add_trace(
+                go.Scatter(
+                    x=x.loc[group.index],
+                    y=group[col],
+                    name=name,
+                    mode="lines+markers",
+                    connectgaps=False,
+                )
+            )
         fig.update_layout(
             title=label,
             xaxis_title="Recorded local time" if metric == "heart_rate" else "UTC time",
             yaxis_title=col,
+            xaxis_tickformat="%Y-%m-%d %H:%M",
         )
         st.plotly_chart(fig, width="stretch")
     sessions, _ = resolve_rows(

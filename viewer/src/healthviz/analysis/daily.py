@@ -6,6 +6,7 @@ import pandas as pd
 from healthviz.analysis.heart import resting_from_sleep
 from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import annotate, resolve_rows, source_rank
+from healthviz.analysis.workouts import split_workout_days
 from healthviz.archive.values import parse_offset
 from healthviz.settings import Settings
 
@@ -45,8 +46,9 @@ def daily_summary(
 ) -> pd.DataFrame:
     selected = selected_tables(tables, devices, settings)
     nights = sleep_summary(selected["sleep_sessions"], tables["sleep_stages"])
+    workout_parts = split_workout_days(selected["workouts"])
     dates = set()
-    for frame in [*selected.values(), nights]:
+    for frame in [*selected.values(), nights, workout_parts]:
         if "date_local" in frame:
             dates.update(frame.date_local.dropna())
     if not dates:
@@ -104,12 +106,11 @@ def daily_summary(
         day = session["date_local"]
         set_metric(days[day], "sleep_min", session["sleep_min"], pd.DataFrame([session]))
         days[day]["sleep_eligible"] = bool(session["eligible"])
-    for day, group in selected["workouts"].groupby("date_local"):
-        duration = group.duration_s.fillna((group.end_utc - group.start_utc).dt.total_seconds())
+    for day, group in workout_parts.groupby("date_local"):
         set_metric(
             days[day],
             "workout_min",
-            None if (group.quality == "ambiguous").any() else duration.sum(min_count=1) / 60,
+            None if (group.quality == "ambiguous").any() else group.minutes.sum(min_count=1),
             group,
         )
     apply_fallback(days, tables, devices, settings)
@@ -229,6 +230,10 @@ def period_summary(daily: pd.DataFrame, period: str) -> pd.DataFrame:
             "nights": int(group.sleep_eligible.sum()),
         }
         for metric in METRICS:
+            eligible = group.sleep_eligible if metric == "sleep_min" else group.complete
+            count = int((eligible & group[metric].notna()).sum())
+            row[f"{metric}_covered_days"] = count
+            row[f"{metric}_complete"] = count == expected
             row[metric] = (
                 group[metric].sum(min_count=1)
                 if metric in ("steps", "distance", "active_kcal", "total_kcal", "workout_min")

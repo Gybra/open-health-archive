@@ -5,7 +5,7 @@ MAX_TRACK_BYTES = 32 * 1024 * 1024
 
 
 def validate_gpx(data: bytes) -> None:
-    if len(data) > MAX_TRACK_BYTES or b"<!DOCTYPE" in data.upper():
+    if len(data) > MAX_TRACK_BYTES or b"<!DOCTYPE" in data.upper().replace(b"\x00", b""):
         raise ValueError("invalid GPX")
     root = ET.fromstring(data)
     if root.tag.split("}")[-1] != "gpx":

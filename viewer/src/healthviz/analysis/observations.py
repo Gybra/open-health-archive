@@ -3,6 +3,8 @@ from statistics import median
 
 import pandas as pd
 
+from healthviz.analysis.workouts import workout_days
+
 
 def onset_sd(values: pd.Series) -> float:
     return float(((values - 18 * 60) % 1440).std())
@@ -15,18 +17,29 @@ def reduced_week(value, previous) -> bool:
     )
 
 
-def compatible_history(daily, metric, as_of, window):
-    rows = daily.loc[(daily.date_local <= as_of) & daily[metric].notna()].sort_values("date_local")
-    current = rows.loc[rows.date_local == as_of]
-    if current.empty:
-        return rows.iloc[:0]
+def method_run(daily, metric, end):
+    rows = daily.loc[(daily.date_local <= end) & daily[metric].notna()].sort_values("date_local")
     keys = [f"{metric}_physical_device_id", f"{metric}_computed_by"]
-    key = current.iloc[-1][keys]
+    if rows.empty or not set(keys).issubset(rows) or rows.iloc[-1][keys].isna().any():
+        return daily.iloc[:0].copy()
+    key = rows.iloc[-1][keys]
     changed = rows.loc[~rows[keys].eq(key).all(axis=1)]
-    lower = as_of - timedelta(days=window)
-    if not changed.empty:
-        lower = max(lower, changed.date_local.iloc[-1] + timedelta(days=1))
-    return rows.loc[(rows.date_local >= lower) & (rows.date_local < as_of) & rows.complete]
+    lower = (
+        changed.date_local.iloc[-1] + timedelta(days=1)
+        if not changed.empty
+        else rows.date_local.iloc[0]
+    )
+    return daily.loc[(daily.date_local >= lower) & (daily.date_local <= end)].copy()
+
+
+def compatible_history(daily, metric, as_of, window):
+    rows = method_run(daily, metric, as_of)
+    return rows.loc[
+        (rows.date_local >= as_of - timedelta(days=window))
+        & (rows.date_local < as_of)
+        & rows.complete
+        & rows[metric].notna()
+    ]
 
 
 def observations(
@@ -49,7 +62,10 @@ def observations(
                 )
     if not sleep.empty:
         nights = sleep.loc[sleep.main & sleep.eligible & (sleep.date_local <= as_of)]
-        recent = nights.loc[nights.date_local > as_of - timedelta(days=28)]
+        recent = nights.loc[
+            (nights.date_local > as_of - timedelta(days=28))
+            & nights.date_local.isin(method_run(daily, "sleep_min", as_of).date_local)
+        ]
         if len(recent) >= 7:
             messages.append(
                 f"Sleep onset SD is {onset_sd(recent.onset_wall_min):.1f} minutes "
@@ -57,6 +73,11 @@ def observations(
                 "(clock times unwrapped around 18:00)."
             )
         week = as_of - timedelta(days=as_of.weekday() + 7)
+        nights = nights.loc[
+            nights.date_local.isin(
+                method_run(daily, "sleep_min", week + timedelta(days=6)).date_local
+            )
+        ]
         latest = nights.loc[
             (nights.date_local >= week) & (nights.date_local < week + timedelta(days=7))
         ]
@@ -76,7 +97,10 @@ def observations(
         eligible_days = set(daily.loc[daily.complete, "date_local"])
         eligible = workouts.loc[
             (workouts.date_local <= as_of)
-            & workouts.date_local.isin(eligible_days)
+            & workouts.apply(
+                lambda row: all(day in eligible_days and day <= as_of for day in workout_days(row)),
+                axis=1,
+            )
             & workouts.quality.ne("ambiguous")
         ].copy()
         duration = eligible.duration_s.fillna(
@@ -103,11 +127,11 @@ def observations(
 
 
 def weekly_observations(daily, as_of):
-    frame = daily.loc[daily.date_local <= as_of].copy()
-    frame["week"] = frame.date_local.map(lambda d: d - timedelta(days=d.weekday()))
     week = as_of - timedelta(days=as_of.weekday() + 7)
     messages = []
     for metric, label in [("steps", "steps"), ("workout_min", "recorded workout minutes")]:
+        frame = method_run(daily, metric, week + timedelta(days=6))
+        frame["week"] = frame.date_local.map(lambda d: d - timedelta(days=d.weekday()))
         weekly = {}
         for start, group in frame.groupby("week"):
             if len(group) == 7 and group.complete.all() and group[metric].notna().all():

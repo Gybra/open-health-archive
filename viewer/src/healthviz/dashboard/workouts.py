@@ -1,13 +1,17 @@
+import hashlib
+import json
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
-from healthviz.analysis.gps import map_deck, read_track, route_profile
+from healthviz.analysis.gps import map_deck, parse_track, route_profile
 from healthviz.analysis.heart import max_hr, zone_seconds
 from healthviz.analysis.sources import resolve_rows
-from healthviz.archive.gpx import track_bytes, validate_gpx
-from healthviz.archive.reader import archive_token
-from healthviz.dashboard.charts import filtered, summary_table
+from healthviz.archive.gpx import track_bytes
+from healthviz.archive.reader import ArchiveReadError, archive_token
+from healthviz.archive.validate import safe_track_path
+from healthviz.dashboard.charts import filtered, select_record, summary_table
 
 
 def workout_filter(tables, settings, start, end):
@@ -27,19 +31,31 @@ def workout_filter(tables, settings, start, end):
 
 
 def cached_tracks(archive, paths):
-    key = (str(archive), archive_token(archive))
+    token = st.session_state["snapshot"][0][0]
+    if archive_token(archive) != token:
+        raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
+    key = (str(archive), token)
     state = st.session_state.get("tracks")
     if state is None or state[0] != key:
         state = (key, {})
-    cache = {path: points for path, points in state[1].items() if path in paths}
+    cache = {path: entry for path, entry in state[1].items() if path in paths}
+    manifest = json.loads((archive / "manifest.json").read_bytes())
+    hashes = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
     for path in paths:
         if path not in cache:
             try:
-                cache[path] = read_track(archive, path)
-            except ValueError:
-                cache[path] = None
+                if not safe_track_path(path):
+                    raise ValueError
+                data = track_bytes(archive / path)
+                if hashlib.sha256(data).hexdigest() != hashes.get(path):
+                    raise ArchiveReadError("archive: track changed; finish sync and reload")
+                cache[path] = (parse_track(data), data)
+            except (OSError, ValueError):
+                cache[path] = (None, None)
+    if archive_token(archive) != token:
+        raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
     st.session_state["tracks"] = (key, cache)
-    return cache
+    return {path: entry[0] for path, entry in cache.items()}
 
 
 def resolved_hr(tables, settings):
@@ -58,8 +74,7 @@ def render(tables, daily, settings, *, start, end, archive, offline):
     if workouts.empty:
         st.info("No workouts match these filters.")
         return
-    choice = st.selectbox("Workout", workouts.workout_id.tolist(), format_func=lambda key: key)
-    workout = workouts.loc[workouts.workout_id == choice].iloc[0]
+    workout = select_record(workouts, "Workout")
     summary_table(pd.DataFrame([workout]), "Workout detail")
     duration = (
         workout.duration_s
@@ -79,10 +94,10 @@ def render(tables, daily, settings, *, start, end, archive, offline):
     ):
         st.write(f"Recorded average pace: {duration / 60 / (workout.distance_m / 1000):.2f} min/km")
     if pd.notna(workout.ascent_m) or pd.notna(workout.descent_m):
-        st.caption(
-            f"Ascent/descent attribution: {workout.ascent_computed_by or 'unknown'}; "
-            f"no external elevation lookup."
+        attribution = (
+            workout.ascent_computed_by if pd.notna(workout.ascent_computed_by) else "unknown"
         )
+        st.caption(f"Ascent/descent attribution: {attribution}; no external elevation lookup.")
     hr = resolved_hr(tables, settings)
     samples = hr.loc[(hr.time_utc >= workout.start_utc) & (hr.time_utc < workout.end_utc)]
     maximum, method = max_hr(
@@ -98,7 +113,14 @@ def render(tables, daily, settings, *, start, end, archive, offline):
     zones = zone_seconds(samples, workout.start_utc, workout.end_utc, maximum)
     summary_table(zones, "Heart rate zone durations")
     if not samples.empty:
-        st.line_chart(samples.set_index("time_utc")[["bpm"]])
+        pulse = go.Figure(go.Scatter(x=samples.time_utc, y=samples.bpm, connectgaps=False))
+        pulse.update_layout(
+            title="Workout heart rate",
+            xaxis_title="UTC time",
+            xaxis_tickformat="%H:%M",
+            yaxis_title="bpm",
+        )
+        st.plotly_chart(pulse, width="stretch")
     if pd.isna(workout.track_file) or not workout.track_file:
         st.info("No GPS track for this workout; recorded metrics remain available.")
         return
@@ -130,8 +152,8 @@ def render(tables, daily, settings, *, start, end, archive, offline):
             )
             st.plotly_chart(fig, width="stretch")
     summary_table(profile, "GPS-derived route profile")
-    data = track_bytes(archive / workout.track_file)
-    validate_gpx(data)
+    # Download exactly the bytes used by this validated route, not a later sync revision.
+    data = st.session_state["tracks"][1][workout.track_file][1]
     st.download_button(
         "Download GPX", data, file_name=f"{workout.workout_id}.gpx", mime="application/gpx+xml"
     )

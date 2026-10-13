@@ -96,6 +96,11 @@ Daily coverage is hours containing heart-rate samples, not verified wear time.
 Incomplete days and absent values are not zero and do not enter eligible means.
 Recorded offsets can be estimates and cannot describe a timezone change within one
 long session. Cross-hour interval allocation is proportional and marked estimated.
+Overnight workout minutes are also allocated proportionally across local midnights.
+Period `complete` describes HR coverage only; each metric additionally reports its
+eligible covered-day count and completeness. Partial totals are never extrapolated.
+CSV downloads include the selected period only; rolling chart means use preceding
+history outside the visible range. Plotly charts offer PNG downloads.
 Vendor fallback is never added to raw data. Do not import or sync files while
 consulting; a changing/inconsistent snapshot is rejected rather than silently read.
 
@@ -103,7 +108,13 @@ consulting; a changing/inconsistent snapshot is rejected rather than silently re
 
 Archives are plaintext. A cloud storage provider can read them if you sync them to
 Google Drive or another service. Healthviz does not upload files. GPS tracks reveal
-locations: keep archives private and backed up. Containers protect original exports
+locations: keep archives private and backed up. Online maps request OSM tiles in
+the browser, revealing the viewed area to that provider; `--offline` uses no basemap.
+Streamlit telemetry and remote deployment controls are disabled. A standard-library
+audit hook blocks Python socket connections and outbound DNS before framework
+startup; it is not a sandbox for arbitrary native code. No health-data disk cache
+or persistent database is created. Keep sync/import jobs stopped while consulting.
+Containers protect original exports
 only when they are mounted read-only; Docker does not encrypt them.
 
 This is not a medical device and provides no diagnosis or medical advice.

@@ -16,7 +16,7 @@ def test_no_gps_no_elevation_no_profile(viewer_app):
     viewer_app.selectbox(key="page").set_value("Workouts").run()
     assert not viewer_app.error
     widget = next(w for w in viewer_app.selectbox if w.label == "Workout")
-    widget.set_value("gym").run()
+    widget.select_index(0).run()
     assert not viewer_app.error
     assert any("No GPS" in x.value for x in viewer_app.info)
 
