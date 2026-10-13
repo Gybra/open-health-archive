@@ -1,4 +1,4 @@
-import re
+import hashlib
 from dataclasses import dataclass
 
 from healthviz.archive.schema import Row
@@ -19,6 +19,12 @@ class Device:
 UNKNOWN_DEVICE = Device("xiaomi-unknown", "", "", "other")
 
 
+def source_device_id(source_id: str, kind: str) -> str:
+    # Source-local pseudonym, not an account ID; names can change or collide.
+    fingerprint = hashlib.sha256(source_id.encode()).hexdigest()[:16]
+    return f"xiaomi-{kind}-{fingerprint}"
+
+
 def load_devices(export: XiaomiExport) -> dict[str, Device]:
     result = {}
     for _, row in export.rows("data_source"):
@@ -29,9 +35,7 @@ def load_devices(export: XiaomiExport) -> dict[str, Device]:
         for suffix, label in ((".phone", "phone"), (".manually", "manual"), (".app", "app")):
             if model.endswith(suffix):
                 kind = label
-        identifier = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "xiaomi-unknown"
-        if kind in ("manual", "app"):
-            identifier = f"mi-fitness-{kind}"
+        identifier = source_device_id(row["Sid"], kind)
         result[row["Sid"]] = Device(identifier, "Xiaomi" if kind == "watch" else "", name, kind)
     return result
 
@@ -40,7 +44,7 @@ def device_for(export: XiaomiExport, devices, source: Row, table: str) -> Device
     device = devices.get(source.get("Sid"))
     if device is None:
         export.warn_once(table, "rows from an unknown device")
-        return UNKNOWN_DEVICE
+        return Device(source_device_id(source.get("Sid", ""), "other"), "", "", "other")
     return device
 
 

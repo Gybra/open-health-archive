@@ -24,8 +24,8 @@ def setup(root):
 def test_download_and_link(tmp_path):
     e, w = setup(tmp_path / "x")
     tracks = collect_tracks(e, w, tmp_path / "archive", None, fetch=lambda url: GPX)
-    assert tracks == {"tracks/xiaomi-outdoor_walking-1767258000.gpx": GPX}
-    assert w[0]["track_file"] == "tracks/xiaomi-outdoor_walking-1767258000.gpx"
+    assert tracks == {"tracks/xiaomi-d1f87b9c1d1f3dbe.gpx": GPX}
+    assert w[0]["track_file"] == "tracks/xiaomi-d1f87b9c1d1f3dbe.gpx"
 
 
 def test_local_and_existing_no_download(tmp_path):

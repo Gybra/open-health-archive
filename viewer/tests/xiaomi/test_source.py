@@ -44,6 +44,6 @@ def test_optional_missing_and_json_privacy(tmp_path):
 def test_device_rules(tmp_path):
     p = write_export(tmp_path)
     devices = load_devices(open_export(p))
-    assert devices[WATCH_SID].device_id == "xiaomi-watch-s1-active"
+    assert devices[WATCH_SID].device_id == "xiaomi-watch-bdc5d8a48c238979"
     assert devices[WATCH_SID].kind == "watch"
-    assert devices["901"].device_id == "mi-fitness-manual"
+    assert devices["901"].device_id == "xiaomi-manual-fa88d374b9cf5e05"

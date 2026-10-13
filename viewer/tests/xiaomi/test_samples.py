@@ -21,10 +21,10 @@ def test_hr_and_provenance(tmp_path):
             "time_utc": "2026-01-01T00:00:00Z",
             "utc_offset": "+01:00",
             "bpm": "61",
-            "device_id": "xiaomi-watch-s1-active",
+            "device_id": "xiaomi-watch-bdc5d8a48c238979",
             "ingest": "xiaomi_export",
             "source_app": "com.mi.health",
-            "record_id": "xiaomi-watch-s1-active:heart_rate:1767225600",
+            "record_id": "xiaomi-watch-bdc5d8a48c238979:heart_rate:1767225600",
         }
     ]
 
@@ -59,7 +59,7 @@ def test_vitals_and_manual_weight(tmp_path):
     assert out["resting_heart_rate"][0]["computed_by"] == "vendor"
     assert len({r["record_id"] for r in out["spo2"]}) == 2
     assert out["weight"][0]["kg"] == "65.0"
-    assert out["weight"][0]["device_id"] == "mi-fitness-manual"
+    assert out["weight"][0]["device_id"] == "xiaomi-manual-fa88d374b9cf5e05"
 
 
 def test_dropped_invalid_and_unknown_no_values_logged(tmp_path):

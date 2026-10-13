@@ -1,3 +1,5 @@
+import hashlib
+
 from healthviz.archive.values import number, offset_text, positive
 from healthviz.xiaomi.devices import device_for, provenance
 from healthviz.xiaomi.mapping import append_row, numeric, timestamp
@@ -19,15 +21,15 @@ POSITIVE_FIELDS = {
 }
 
 
-def workout_id(key: str, time: int) -> str:
-    # Only canonical safe keys enter filenames, never arbitrary vendor strings.
-    safe = key if key in TYPES else "other_workout"
-    return f"xiaomi-{safe}-{time}"
+def workout_id(key: str, time: int, device_id: str) -> str:
+    # Full source key preserves unknown types without putting them in filenames.
+    fingerprint = hashlib.sha256(f"{device_id}\0{key}\0{time}".encode()).hexdigest()[:16]
+    return f"xiaomi-{fingerprint}"
 
 
 def workout_row(source, value, device):
     key, time = source["Key"], int(source["Time"])
-    identifier = workout_id(key, time)
+    identifier = workout_id(key, time, device.device_id)
     row = dict(
         workout_id=identifier,
         type=TYPES.get(key, "other_workout"),

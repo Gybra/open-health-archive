@@ -27,7 +27,7 @@ def stage_rows(value, session, provenance_fields):
 
 
 def session_rows(source, value, device):
-    session = f"xiaomi-sleep-{source['Time']}"
+    session = f"{device.device_id}-sleep-{int(source['Time'])}"
     fields = provenance(device, session)
     stages = stage_rows(value, session, fields)
     row = dict(

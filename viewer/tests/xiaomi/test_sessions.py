@@ -84,7 +84,7 @@ def test_workout_mapping(tmp_path):
     w = map_workouts(
         *load(tmp_path, sport=[sport_row("outdoor_walking", 1767258000, workout_value())])
     )[0]
-    assert w["workout_id"] == "xiaomi-outdoor_walking-1767258000"
+    assert w["workout_id"] == "xiaomi-d1f87b9c1d1f3dbe"
     assert (w["type"], w["source_type"]) == ("walking", "outdoor_walking")
     assert (w["active_kcal"], w["total_kcal"], w["distance_m"]) == ("210", "260", "4200")
     assert (w["ascent_m"], w["descent_m"], w["ascent_computed_by"]) == ("0.0", "12.3", "vendor")

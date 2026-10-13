@@ -13,31 +13,36 @@ METRICS = {
 
 def covered_days(tables):
     covered = {}
-    for source, table, timecol in (
+    for metric, table, timecol in (
         ("steps", "steps", "start_utc"),
-        ("calories", "calories", "start_utc"),
-        ("sleep", "sleep_sessions", "end_utc"),
+        ("distance", "distance", "start_utc"),
+        ("active_kcal", "calories", "start_utc"),
+        ("sleep_duration", "sleep_sessions", "end_utc"),
     ):
-        covered[source] = {local_date(r[timecol], r["utc_offset"]) for r in tables.get(table, [])}
+        covered[metric] = {
+            (r["device_id"], local_date(r[timecol], r["utc_offset"]))
+            for r in tables.get(table, [])
+            if metric != "active_kcal" or r["kind"] == "active"
+        }
     return covered
 
 
 def map_vendor_daily(export, devices, tables):
     covered, output = covered_days(tables), []
-    # Vendor summaries fill days without observations; never add them to raw samples.
+    # Suppress only that source's raw metric: selection across sources belongs to the viewer.
     for line, source in export.rows("aggregated_fitness_data"):
         key = source["Key"]
         if source["Tag"] != "daily_report" or key not in METRICS:
             continue
         try:
             day = datetime.fromtimestamp(int(source["Time"]), UTC).date().isoformat()
-            if day in covered[key]:
-                continue
             value = export.json_value("aggregated_fitness_data", line, source["Value"])
             if value is None:
                 continue
             device = device_for(export, devices, source, "aggregated_fitness_data")
             for metric, field, unit in METRICS[key]:
+                if (device.device_id, day) in covered[metric]:
+                    continue
                 amount = positive(numeric(value, field))
                 if not amount:
                     continue

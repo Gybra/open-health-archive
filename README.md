@@ -45,14 +45,22 @@ are inferred as timestamp +60 seconds; confirm them against vendor documentation
 before comparing fine-grained interval data across manufacturers.
 
 The importer also accepts a ZIP without extracting it. Re-imports upsert the same
-records and preserve other ingestion sources. Track backups use `<Time>.gpx` names.
+records across partitions and preserve other ingestion sources. Corrected sessions
+replace their owned sleep stages; corrected steps can retract derived distance.
+Device IDs are stable source-local pseudonyms, not model names or anonymization.
+Associating the same physical watch across different adapters requires explicit
+mapping; it cannot be inferred safely from names. Track backups use `<Time>.gpx` names.
 If a GPX backup is missing, the importer attempts the vendor download URL: that needs
 network access and the link may have expired. The offline command above instead
 reports a missing track and continues. Never mount originals writable or mount your
 home or Docker socket. The viewer is not available in this milestone.
 
 See `schema/export-schema.md` for the contract. Error messages omit input values;
-record counts and warning counts are printed. Store the output privately and back it up.
+record counts and warning counts are printed. Existing archives must validate before
+any update. If an archive is corrupt or an interrupted import left an inconsistent
+manifest, rebuild to a NEW output folder and retain the old folder for inspection;
+never silently repair or overwrite it. Do not run concurrent imports to the same
+archive. Store the output privately and back it up.
 
 ## Privacy
 

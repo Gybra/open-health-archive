@@ -11,7 +11,16 @@ def test_raw_day_suppresses_fallback(tmp_path):
             aggregated_row("daily_report", "steps", 1767312000, {"steps": 5000, "distance": 3500}),
         ],
     )
-    raw = {"steps": [{"start_utc": "2026-01-01T12:00:00Z", "utc_offset": "+01:00"}]}
+    raw = {
+        "steps": [
+            {
+                "start_utc": "2026-01-01T12:00:00Z",
+                "utc_offset": "+01:00",
+                "device_id": devices["900"].device_id,
+            }
+        ]
+    }
+    raw["distance"] = raw["steps"]
     out = map_vendor_daily(e, devices, raw)
     assert {(r["date_local"], r["metric"], r["value"]) for r in out} == {
         ("2026-01-02", "steps", "5000"),
@@ -29,5 +38,13 @@ def test_sleep_uses_wake_day_and_ignores_other_tags(tmp_path):
             aggregated_row("daily_report", "calories", 1767225600, {"calories": 0}),
         ],
     )
-    raw = {"sleep_sessions": [{"end_utc": "2026-01-01T07:00:00Z", "utc_offset": "+01:00"}]}
+    raw = {
+        "sleep_sessions": [
+            {
+                "end_utc": "2026-01-01T07:00:00Z",
+                "utc_offset": "+01:00",
+                "device_id": devices["900"].device_id,
+            }
+        ]
+    }
     assert map_vendor_daily(e, devices, raw) == []

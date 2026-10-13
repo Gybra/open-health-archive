@@ -6,8 +6,12 @@ source's offset (+HH:MM), or an importer estimate when the vendor omits it.
 Empty means unknown, never zero. Numeric values use metric units: m, seconds,
 minutes, bpm, kcal, kg and saturation percent, as indicated by column names.
 
-Provenance: device_id identifies the measuring device, ingest the ingestion path,
+Provenance: device_id identifies the measurement source, ingest the ingestion path,
 source_app the originating application, and record_id an idempotent record key.
+The Xiaomi importer uses source-local hashed pseudonyms so two identical models or
+renamed devices do not collide. Names/models remain metadata. These pseudonyms are
+not anonymization; cross-ingest identity requires an explicit source association,
+not matching names. Vendor aggregate sources may lack physical-device attribution.
 Account IDs and source system device identifiers are never exported. source_type
 preserves the original sleep stage or exercise label. computed_by distinguishes
 device observations, vendor calculations and app-derived values.
@@ -16,7 +20,9 @@ High-volume tables are partitioned by UTC month; low-volume tables by year.
 Date-only tables use their explicit local date. devices.csv is unpartitioned.
 Writers preserve all sources. Cross-source priority belongs to the reader.
 Only vendor resting HR and explicitly flagged daily fallback summaries are kept
-as precomputed aggregates. Summaries must never be added on top of raw observations.
+as precomputed aggregates. Fallback suppression is per source, metric and local day;
+a steps observation without distance must not suppress distance fallback. The viewer
+must select between raw observations and summaries, never add both.
 Sleep is_complete is optional: false means explicitly incomplete; empty means unknown.
 
 Writes upsert by (ingest, record_id); devices merge by device_id. Individual files

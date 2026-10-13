@@ -83,6 +83,8 @@ def import_xiaomi(
         device_rows(devices, tables),
         tracks,
         generator=f"healthviz {__version__}",
+        delete_keys={"distance": {(r["ingest"], r["record_id"]) for r in tables["steps"]}},
+        replace_sessions={(r["ingest"], r["session_id"]) for r in tables["sleep_sessions"]},
     )
     linked = sum(bool(w["track_file"]) for w in tables["workouts"])
     expected = sum(1 for _ in export.rows("sport_track_data"))

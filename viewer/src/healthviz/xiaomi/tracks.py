@@ -1,17 +1,22 @@
+import http.client
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections import defaultdict
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlsplit
 
 from healthviz.archive.validate import safe_track_path
 from healthviz.archive.values import parse_utc
+from healthviz.xiaomi.devices import load_devices
 
 type Fetch = Callable[[str], bytes]
 MAX_TRACK_BYTES = 32 * 1024 * 1024
 
 
 def checked_url(url):
+    if any(ord(c) < 32 or ord(c) == 127 for c in url):
+        raise ValueError("invalid URL")
     p = urlsplit(url)
     host = p.hostname or ""
     if (
@@ -54,30 +59,57 @@ def track_bytes(path: Path) -> bytes:
     return path.read_bytes()
 
 
+def reuse_existing_tracks(workouts, archive_dir, export):
+    for workout in workouts:
+        rel = f"tracks/{workout['workout_id']}.gpx"
+        saved = archive_dir / rel
+        if not safe_track_path(rel):
+            continue
+        if saved.exists():
+            try:
+                validate_gpx(track_bytes(saved))
+                workout["track_file"] = rel
+            except (OSError, ValueError, ET.ParseError):
+                export.warn_once("sport_track_data", "existing track is invalid")
+
+
+def track_workout(export, source, candidates, devices, line):
+    device = devices.get(source.get("Did"))
+    if device:
+        candidates = [w for w in candidates if w["device_id"] == device.device_id]
+    if len(candidates) != 1:
+        reason = (
+            "ambiguous workout for track"
+            if candidates
+            else "no workout starts at this track's time"
+        )
+        export.warn("sport_track_data", line, reason)
+        return None
+    return candidates[0]
+
+
 def collect_tracks(export, workouts, archive_dir, tracks_dir, fetch: Fetch = download):
-    by_time = {parse_utc(w["start_utc"]): w for w in workouts}
-    tracks = {}
+    reuse_existing_tracks(workouts, archive_dir, export)
+    by_time = defaultdict(list)
+    for workout in workouts:
+        by_time[parse_utc(workout["start_utc"])].append(workout)
+    devices, tracks = load_devices(export), {}
     # GPX contains signed, expiring URLs; prefer the user's local backup.
     for line, source in export.rows("sport_track_data"):
         try:
             time = int(source["Time"])
-            workout = by_time.get(time)
-            if workout is None:
-                export.warn("sport_track_data", line, "no workout starts at this track's time")
+            workout = track_workout(export, source, by_time[time], devices, line)
+            if workout is None or workout["track_file"]:
                 continue
             rel = f"tracks/{workout['workout_id']}.gpx"
             if not safe_track_path(rel):
                 raise ValueError("unsafe workout ID")
-            saved = archive_dir / rel
-            if saved.exists():
-                validate_gpx(track_bytes(saved))
-            else:
-                local = tracks_dir / f"{time}.gpx" if tracks_dir else None
-                data = track_bytes(local) if local and local.exists() else fetch(source["GPX"])
-                validate_gpx(data)
-                tracks[rel] = data
+            local = tracks_dir / f"{time}.gpx" if tracks_dir else None
+            data = track_bytes(local) if local and local.exists() else fetch(source["GPX"])
+            validate_gpx(data)
+            tracks[rel] = data
             workout["track_file"] = rel
-        except (OSError, ValueError, ET.ParseError) as error:
+        except (OSError, ValueError, ET.ParseError, http.client.HTTPException) as error:
             # Exception messages may contain signed URLs; retain only the class.
             export.warn("sport_track_data", line, f"track unavailable ({type(error).__name__})")
     return tracks
