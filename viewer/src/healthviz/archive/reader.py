@@ -29,6 +29,27 @@ def archive_token(root: Path) -> str:
         raise ArchiveReadError("archive: cannot read snapshot") from None
 
 
+def verify_snapshot(root: Path) -> tuple[str, str]:
+    """Verify source bytes even when metadata is unchanged; never parse cached CSVs."""
+    try:
+        token = archive_token(root)
+        manifest = (root / "manifest.json").read_bytes()
+        files = archive_files(root)
+        if check_manifest(root, files, manifest):
+            raise ArchiveReadError("archive: validation failed; finish sync and reload")
+        if (
+            archive_token(root) != token
+            or (root / "manifest.json").read_bytes() != manifest
+            or archive_token(root) != token
+        ):
+            raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
+        return token, hashlib.sha256(manifest).hexdigest()
+    except ArchiveReadError:
+        raise
+    except (OSError, ValueError, TypeError, KeyError):
+        raise ArchiveReadError("archive: cannot verify snapshot") from None
+
+
 def typed_frame(frame: pd.DataFrame) -> pd.DataFrame:
     for col in frame:
         kind = COLUMN_KINDS.get(col)

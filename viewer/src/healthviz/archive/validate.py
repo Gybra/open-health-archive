@@ -3,7 +3,9 @@ import hashlib
 import io
 import json
 import math
+import os
 import re
+import stat
 from datetime import date
 from pathlib import Path, PurePosixPath
 
@@ -102,10 +104,35 @@ def archive_files(root: Path) -> list[Path]:
     return sorted([*root.rglob("*.csv"), *root.glob("tracks/*.gpx")])
 
 
-def check_manifest(root: Path, files: list[Path]) -> list[str]:
+def file_checksum(path: Path) -> str:
+    def identity(value):
+        return (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise OSError("not a regular file")
+        digest = hashlib.file_digest(stream, "sha256").hexdigest()
+        after = os.fstat(stream.fileno())
+    # Reading may change atime, but never content identity.
+    if identity(before) != identity(after) or identity(after) != identity(path.lstat()):
+        raise OSError("file changed")
+    return digest
+
+
+def check_manifest(root: Path, files: list[Path], manifest_bytes: bytes | None = None) -> list[str]:
     errors = []
     try:
-        manifest = json.loads((root / "manifest.json").read_text())
+        manifest = json.loads(
+            (root / "manifest.json").read_bytes() if manifest_bytes is None else manifest_bytes
+        )
         if manifest["schema_version"] != SCHEMA_VERSION:
             errors.append("manifest: schema version mismatch")
         entries = {f["path"]: f for f in manifest["files"]}
@@ -113,11 +140,9 @@ def check_manifest(root: Path, files: list[Path]) -> list[str]:
             errors.append("manifest: file list mismatch")
         for p in files:
             rel = p.relative_to(root).as_posix()
-            if (
-                rel in entries
-                and hashlib.sha256(p.read_bytes()).hexdigest() != entries[rel]["sha256"]
-            ):
-                errors.append(f"{rel}: checksum mismatch")
+            if rel in entries:
+                if file_checksum(p) != entries[rel]["sha256"]:
+                    errors.append(f"{rel}: checksum mismatch")
     except (OSError, ValueError, KeyError, TypeError):
         errors.append("manifest: missing or invalid")
     return errors
