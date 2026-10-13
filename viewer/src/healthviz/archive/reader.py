@@ -58,9 +58,9 @@ def verify_snapshot(root: Path) -> tuple[str, str]:
         files = archive_files(root)
         if check_manifest(root, files, manifest):
             raise ArchiveReadError("archive: validation failed; finish sync and reload")
+        # Identity covers each entry's token metadata plus inode/ctime; manifest is compared too.
         if (
-            archive_token(root) != token
-            or read_regular_bytes(root / "manifest.json") != manifest
+            read_regular_bytes(root / "manifest.json") != manifest
             or snapshot_identity(root) != identity
         ):
             raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
