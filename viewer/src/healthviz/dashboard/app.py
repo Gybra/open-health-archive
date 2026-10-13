@@ -7,7 +7,8 @@ from pathlib import Path
 import streamlit as st
 
 from healthviz.analysis.daily import daily_summary
-from healthviz.archive.reader import ArchiveReadError, archive_token, load_archive
+from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
+from healthviz.read_model import ReadModelError, load_read_model, validate_location
 from healthviz.settings import SettingsError, load_settings, save_settings
 
 PAGES = {
@@ -91,12 +92,18 @@ def settings_form(settings, devices, config):
             st.rerun()
 
 
+def clear_snapshot_context():
+    for key in ("snapshot", "overview_sources", "tracks", "resolved_hr", "heatmap"):
+        st.session_state.pop(key, None)
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--archive", type=Path)
     parser.add_argument(
         "--config", type=Path, default=Path.home() / ".config/healthviz/config.toml"
     )
+    parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--offline", action="store_true")
     args = parser.parse_args()
     st.set_page_config(page_title="Open Health Archive", layout="wide")
@@ -116,15 +123,31 @@ def main():
         return
     if args.config.resolve().is_relative_to(archive.resolve()):
         raise SettingsError("config: use a location outside the archive")
-    token = archive_token(archive)
-    key = (token, settings)
+    if args.cache_dir is not None:
+        validate_location(args.cache_dir, archive, args.config)
+        st.caption("Persistent local read model enabled · disposable plaintext copy.")
+    snapshot = verify_snapshot(archive)
+    key = (snapshot[0], settings)
     cache = st.session_state.get("snapshot")
     if cache is None or cache[0] != key:
-        with st.spinner("Validating archive and resolving sources…"):
-            tables = load_archive(archive)
-            settings.check_devices(set(tables["devices"].device_id))
-            daily = daily_summary(tables, tables["devices"], settings)
+        with st.spinner("Validating archive and preparing local read model…"):
+            if args.cache_dir is not None:
+                model = load_read_model(
+                    archive, settings, cache_dir=args.cache_dir, config=args.config
+                )
+                tables, daily = model.tables, model.daily
+                context = (key, model.sleep, model.workouts)
+            else:
+                tables = load_archive(archive)
+                settings.check_devices(set(tables["devices"].device_id))
+                daily = daily_summary(tables, tables["devices"], settings)
+                context = None
+            if verify_snapshot(archive) != snapshot:
+                raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
+            clear_snapshot_context()
             st.session_state["snapshot"] = (key, tables, daily)
+            if context is not None:
+                st.session_state["overview_sources"] = context
     _, tables, daily = st.session_state["snapshot"]
     if tables["devices"].vendor.fillna("").eq("Fictional").all() and not tables["devices"].empty:
         st.info("Synthetic demonstration archive — not personal measurements.")
@@ -158,10 +181,10 @@ def main():
 if __name__ == "__main__":
     try:
         main()
-    except (ArchiveReadError, SettingsError) as error:
-        st.session_state.pop("snapshot", None)
+    except (ArchiveReadError, SettingsError, ReadModelError) as error:
+        clear_snapshot_context()
         st.error(str(error))
     except Exception:
         # Third-party exception text can include an entire row or a coordinate.
-        st.session_state.pop("snapshot", None)
+        clear_snapshot_context()
         st.error("Viewer cannot process this selection. Check archive integrity and settings.")

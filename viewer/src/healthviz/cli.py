@@ -25,6 +25,9 @@ def main(argv: list[str] | None = None) -> int:
     viewer.add_argument(
         "--config", type=Path, default=Path.home() / ".config/healthviz/config.toml"
     )
+    viewer.add_argument(
+        "--cache-dir", type=Path, help="Opt in to a separate private local read model"
+    )
     viewer.add_argument("--offline", action="store_true")
     viewer.add_argument("--lan", action="store_true")
     viewer.add_argument("--container", action="store_true", help=argparse.SUPPRESS)
@@ -38,6 +41,7 @@ def main(argv: list[str] | None = None) -> int:
             offline=args.offline,
             lan=args.lan,
             container=args.container,
+            cache_dir=args.cache_dir,
         )
     try:
         result = import_xiaomi(

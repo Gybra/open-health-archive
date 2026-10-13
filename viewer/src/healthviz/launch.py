@@ -12,6 +12,7 @@ def view(
     offline: bool = False,
     lan: bool = False,
     container: bool = False,
+    cache_dir: Path | None = None,
 ) -> int:
     try:
         settings = load_settings(config)
@@ -40,6 +41,8 @@ def view(
         ]
         if root:
             argv.extend(["--archive", str(root)])
+        if cache_dir is not None:
+            argv.extend(["--cache-dir", str(cache_dir)])
         if offline:
             argv.append("--offline")
         return subprocess.run(argv, check=False).returncode

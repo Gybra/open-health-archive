@@ -38,6 +38,25 @@ def test_launcher_addresses_and_privacy(tmp_path, container, lan, address):
     assert "--offline" in argv
 
 
+def test_cache_dir_is_forwarded_explicitly(tmp_path):
+    with patch(
+        "healthviz.launch.subprocess.run", return_value=SimpleNamespace(returncode=0)
+    ) as child:
+        assert (
+            launcher().view(
+                Path("/archive"),
+                config=tmp_path / "config.toml",
+                cache_dir=Path("/cache"),
+                container=True,
+                offline=True,
+            )
+            == 0
+        )
+    argv = child.call_args.args[0]
+    assert argv[argv.index("--cache-dir") + 1] == "/cache"
+    assert "--offline" in argv and "--server.port=8501" in argv
+
+
 def test_launcher_failure_is_redacted(tmp_path, capsys):
     mod = launcher()
     with patch("healthviz.launch.subprocess.run", side_effect=OSError("PRIVATE-SENTINEL")):
