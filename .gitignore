@@ -5,6 +5,11 @@
 *.json.gz
 !schema/fixtures/**
 
+# Disposable private viewer databases must never be tracked.
+*.duckdb
+*.duckdb.wal
+*.duckdb.tmp/
+
 # Python
 __pycache__/
 *.pyc

@@ -105,6 +105,69 @@ history outside the visible range. Plotly charts offer PNG downloads.
 Vendor fallback is never added to raw data. Do not import or sync files while
 consulting; a changing/inconsistent snapshot is rejected rather than silently read.
 
+## Optional persistent local preparation
+
+By default the viewer creates no persistent health-data database. To speed up new
+sessions and process restarts, explicitly enable a disposable DuckDB read model.
+CSV/GPX and the manifest remain canonical; deleting this cache loses no archive data.
+It stores a **second plaintext copy** of raw tables, daily summaries and Overview
+sleep/workout context. It does not store GPX points, map density or observation messages.
+
+Choose a separate directory outside the repository, archive and configuration, and
+outside automatic Drive/iCloud sync. Check local backup policy too. On macOS the
+recommended location is `$HOME/Library/Caches/OpenHealthArchive/viewer`. Keep the
+parent private, then create the empty viewer directory using the non-root container
+identity (Docker Desktop may report a host-created directory with a different UID):
+
+```sh
+CACHE_PARENT="$HOME/Library/Caches/OpenHealthArchive"
+mkdir -p "$CACHE_PARENT"
+chmod 700 "$CACHE_PARENT"
+docker run --rm --network none --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --mount "type=bind,src=$CACHE_PARENT,dst=/cache-parent" \
+  open-health-archive-viewer python -c \
+  'import os; os.mkdir("/cache-parent/viewer", 0o700)'
+
+HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" \
+HEALTHVIZ_CACHE_DIR="$CACHE_PARENT/viewer" \
+  docker compose -f compose.yaml -f compose.cache.yaml up -d viewer
+```
+
+Create the directory only once; do not overwrite an existing directory or change
+archive/config permissions to fix access. The cache requires an owned directory with
+mode `0700` and generated files with mode `0600`. Unsafe paths, symlinks, shared
+permissions and archive/config/code overlap are refused. The overlay requires an
+explicit `HEALTHVIZ_CACHE_DIR` and never creates a missing host directory automatically.
+The archive stays read-only, configuration stays separate, and only `/cache` is added.
+Never mount the home directory or Docker socket. Bind aliases/nesting outside the
+container namespace cannot all be detected: verify all three **host** paths are disjoint.
+
+For offline cached consultation, use the same two Compose files and environment
+variables with `run --rm --service-ports viewer healthviz view /archive --container
+--config /config/config.toml --cache-dir /cache --offline` instead of `up`. Stop an
+existing viewer yourself before reusing port 8501; the overlay retains loopback binding.
+Omit the overlay and `--cache-dir` to keep the original nonpersistent mode.
+
+First preparation may be slower; later starts skip CSV parsing and full daily analysis.
+Every rerun still hashes current CSV/GPX content, and disk hits verify the DB before
+and after materialization. This is not an mtime shortcut and not a promise of a
+particular speedup. Changed sources/settings/code invalidate preparation; settings
+or analysis-only changes can reuse validated raw tables. Filters and historical end
+dates remain computed on demand using full-history inputs. First Map use still parses
+tracks and computes density.
+
+Only completed immutable generations are published. Threads/processes coordinate
+through file locks; interrupted builds and corrupt DBs rebuild from a valid archive.
+An invalid/changing archive never falls back to an old DB. Stop sync/import jobs
+while consulting. Replacement temporarily needs space for old and new generations.
+Cache errors do not repair or modify the archive or settings.
+
+To force a fresh preparation, stop cache-using viewers and remove only generated
+files in this dedicated cache directory; retain the directory and its permissions.
+Disabling persistence does not remove old cache files. File deletion is not secure
+erasure and does not delete OS/back-up copies. Protect this directory like the archive.
+
 ## Privacy
 
 Archives are plaintext. A cloud storage provider can read them if you sync them to
@@ -113,8 +176,10 @@ locations: keep archives private and backed up. Online maps request OSM tiles in
 the browser, revealing the viewed area to that provider; `--offline` uses no basemap.
 Streamlit telemetry and remote deployment controls are disabled. A standard-library
 audit hook blocks Python socket connections and outbound DNS before framework
-startup; it is not a sandbox for arbitrary native code. No health-data disk cache
-or persistent database is created. Keep sync/import jobs stopped while consulting.
+startup; it is not a sandbox for arbitrary native code. No persistent health-data
+cache is created unless `--cache-dir` is explicitly enabled; the optional read model
+is a separate disposable plaintext copy, not an upload or a replacement archive.
+Keep sync/import jobs stopped while consulting.
 Containers protect original exports
 only when they are mounted read-only; Docker does not encrypt them.
 
