@@ -20,7 +20,25 @@ def main(argv: list[str] | None = None) -> int:
     xiaomi.add_argument("--tracks-dir", type=Path)
     # A container's timezone is not the user's; explicit IANA zone avoids silent UTC defaults.
     xiaomi.add_argument("--timezone", required=True, help="IANA zone, e.g. Europe/Rome")
+    viewer = commands.add_parser("view", help="Consult a local archive")
+    viewer.add_argument("archive", nargs="?", type=Path)
+    viewer.add_argument(
+        "--config", type=Path, default=Path.home() / ".config/healthviz/config.toml"
+    )
+    viewer.add_argument("--offline", action="store_true")
+    viewer.add_argument("--lan", action="store_true")
+    viewer.add_argument("--container", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
+    if args.command == "view":
+        from healthviz.launch import view
+
+        return view(
+            args.archive,
+            config=args.config,
+            offline=args.offline,
+            lan=args.lan,
+            container=args.container,
+        )
     try:
         result = import_xiaomi(
             args.export, args.out, zone=ZoneInfo(args.timezone), tracks_dir=args.tracks_dir

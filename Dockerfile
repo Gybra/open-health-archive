@@ -5,8 +5,13 @@ RUN useradd --create-home --uid 1000 healthviz && mkdir /opt/venv && chown healt
 ENV UV_PROJECT_ENVIRONMENT=/opt/venv UV_PYTHON_DOWNLOADS=never PYTHONDONTWRITEBYTECODE=1
 WORKDIR /workspace/viewer
 USER healthviz
-FROM tooling AS dev
+FROM tooling AS project
 COPY --chown=healthviz viewer/pyproject.toml viewer/uv.lock /workspace/viewer/
 COPY --chown=healthviz viewer/src /workspace/viewer/src
+FROM project AS dev
 RUN uv sync --locked
 CMD ["uv", "run", "--no-sync", "healthviz", "--help"]
+FROM project AS runtime
+RUN uv sync --locked --no-dev
+ENV PATH="/opt/venv/bin:$PATH"
+CMD ["healthviz", "view", "/archive", "--config", "/config/config.toml", "--container"]

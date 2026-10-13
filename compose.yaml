@@ -11,3 +11,26 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+  viewer:
+    image: open-health-archive-viewer
+    build:
+      context: .
+      target: runtime
+    ports:
+      - "127.0.0.1:8501:8501"
+    volumes:
+      - type: bind
+        source: ${HEALTHVIZ_ARCHIVE_DIR:-./schema/fixtures/archive}
+        target: /archive
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HEALTHVIZ_CONFIG_DIR:-${HOME}/.config/healthviz}
+        target: /config
+        bind:
+          create_host_path: false
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

@@ -1,8 +1,8 @@
 # Open Health Archive
 
-A vendor-neutral CSV/GPX archive, a Mi Fitness historical importer, and a planned local
-desktop viewer. Status: early development. The Android Health Connect exporter and
-viewer are not implemented yet.
+A vendor-neutral CSV/GPX archive, a Mi Fitness historical importer, and a local
+Docker desktop viewer. Status: early development. The Android Health Connect exporter
+is not implemented yet.
 
 ## Development
 
@@ -53,7 +53,7 @@ mapping; it cannot be inferred safely from names. Track backups use `<Time>.gpx`
 If a GPX backup is missing, the importer attempts the vendor download URL: that needs
 network access and the link may have expired. The offline command above instead
 reports a missing track and continues. Never mount originals writable or mount your
-home or Docker socket. The viewer is not available in this milestone.
+home or Docker socket.
 
 See `schema/export-schema.md` for the contract. Error messages omit input values;
 record counts and warning counts are printed. Existing archives must validate before
@@ -61,6 +61,43 @@ any update. If an archive is corrupt or an interrupted import left an inconsiste
 manifest, rebuild to a NEW output folder and retain the old folder for inspection;
 never silently repair or overwrite it. Do not run concurrent imports to the same
 archive. Store the output privately and back it up.
+
+## Consult an archive locally
+
+Keep the archive and personal configuration outside this repository. Google Drive
+files must be fully available locally before mounting them. Create a private config
+directory (only this directory is mounted, not your home):
+
+```sh
+mkdir -p "$HOME/.config/healthviz"
+chmod 700 "$HOME/.config/healthviz"
+docker compose build
+HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" docker compose up -d viewer
+```
+
+Open `http://127.0.0.1:8501`. Without `HEALTHVIZ_ARCHIVE_DIR`, the viewer uses the
+clearly labeled synthetic demonstration archive. Set `HEALTHVIZ_CONFIG_DIR` to choose
+another private settings directory. The archive is mounted read-only. Settings are
+saved separately in `config.toml`; source associations must be explicit, never based
+on identical model names. Advanced per-device ingest orders can be edited in the
+private TOML `[ingest_priority]` table.
+
+Offline consultation disables all basemap requests:
+
+```sh
+HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" docker compose run --rm \
+  --service-ports viewer healthviz view /archive --container \
+  --config /config/config.toml --offline
+```
+
+Stop an existing viewer first with `docker compose stop viewer` to free port 8501.
+The host binding remains loopback; `--lan` never changes Docker port publication.
+Daily coverage is hours containing heart-rate samples, not verified wear time.
+Incomplete days and absent values are not zero and do not enter eligible means.
+Recorded offsets can be estimates and cannot describe a timezone change within one
+long session. Cross-hour interval allocation is proportional and marked estimated.
+Vendor fallback is never added to raw data. Do not import or sync files while
+consulting; a changing/inconsistent snapshot is rejected rather than silently read.
 
 ## Privacy
 
