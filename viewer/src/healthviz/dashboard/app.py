@@ -14,6 +14,8 @@ PAGES = {
     "Overview": "overview",
     "Sleep": "sleep",
     "Activity & calories": "activity",
+    "Workouts": "workouts",
+    "Map": "maps",
     "Day": "day",
     "Overlaps": "overlaps",
 }
@@ -147,7 +149,8 @@ def main():
     start, end = dates
     module = importlib.import_module("healthviz.dashboard." + PAGES[page])
     st.header(page)
-    module.render(tables, daily, settings, start=start, end=end)
+    kwargs = {"archive": archive, "offline": args.offline} if page in ("Workouts", "Map") else {}
+    module.render(tables, daily, settings, start=start, end=end, **kwargs)
 
 
 if __name__ == "__main__":
