@@ -237,6 +237,7 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
         cleanup(cache, name)
     finally:
         candidate.unlink(missing_ok=True)
+        Path(str(candidate) + ".wal").unlink(missing_ok=True)
 
 
 def load_read_model(root: Path, settings: Settings, *, cache_dir: Path, config: Path) -> ReadModel:

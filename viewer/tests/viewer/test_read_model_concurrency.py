@@ -4,6 +4,7 @@ import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from pathlib import Path
 from unittest.mock import patch
 
 import pandas as pd
@@ -83,9 +84,11 @@ def test_interrupted_publication_retains_previous_pointer_and_recovers(
         context.setattr(mod.os, "replace", fail)
         if phase == "disk-full":
 
-            def disk_full(*args):
+            def disk_full(path, *args):
                 import errno
 
+                # A real ENOSPC mid-write leaves a partial candidate WAL behind.
+                Path(str(path) + ".wal").write_bytes(b"partial synthetic wal")
                 raise OSError(errno.ENOSPC, "PRIVATE-SENTINEL")
 
             context.setattr(mod.store, "write_frames", disk_full)
@@ -94,6 +97,7 @@ def test_interrupted_publication_retains_previous_pointer_and_recovers(
                 root, replace(Settings(), worn_hours_threshold=11), cache_dir=cache, config=config
             )
         assert "PRIVATE-SENTINEL" not in str(error.value)
+        assert not list(cache.glob(".building-*")), "failed builds must not keep plaintext"
     assert (cache / "current.json").read_bytes() == pointer
     recovered = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     pd.testing.assert_frame_equal(first.daily, recovered.daily)
