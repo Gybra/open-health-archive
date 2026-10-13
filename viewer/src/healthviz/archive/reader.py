@@ -9,7 +9,7 @@ import duckdb
 import pandas as pd
 
 from healthviz.archive.schema import COLUMN_KINDS, TABLES
-from healthviz.archive.validate import archive_files, check_csv, check_manifest
+from healthviz.archive.validate import archive_files, check_csv, check_manifest, read_regular_bytes
 
 
 class ArchiveReadError(Exception):
@@ -18,7 +18,7 @@ class ArchiveReadError(Exception):
 
 def archive_token(root: Path) -> str:
     try:
-        digest = hashlib.sha256((root / "manifest.json").read_bytes())
+        digest = hashlib.sha256(read_regular_bytes(root / "manifest.json"))
         for path in [root, *sorted(root.rglob("*"))]:
             if path.is_symlink():
                 raise ArchiveReadError("archive: symlinks are not allowed")
@@ -33,13 +33,13 @@ def verify_snapshot(root: Path) -> tuple[str, str]:
     """Verify source bytes even when metadata is unchanged; never parse cached CSVs."""
     try:
         token = archive_token(root)
-        manifest = (root / "manifest.json").read_bytes()
+        manifest = read_regular_bytes(root / "manifest.json")
         files = archive_files(root)
         if check_manifest(root, files, manifest):
             raise ArchiveReadError("archive: validation failed; finish sync and reload")
         if (
             archive_token(root) != token
-            or (root / "manifest.json").read_bytes() != manifest
+            or read_regular_bytes(root / "manifest.json") != manifest
             or archive_token(root) != token
         ):
             raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
@@ -67,7 +67,7 @@ def typed_frame(frame: pd.DataFrame) -> pd.DataFrame:
 
 
 def sealed_csv(root, path, expected_hash, seen, buffers):
-    data = path.read_bytes()
+    data = read_regular_bytes(path)
     if check_csv(root, path, seen, data) or hashlib.sha256(data).hexdigest() != expected_hash:
         raise ArchiveReadError(
             "archive: validation failed; finish sync or rebuild into a new folder"
@@ -89,7 +89,7 @@ def load_archive(root: Path) -> dict[str, pd.DataFrame]:
     try:
         token = archive_token(root)
         files = archive_files(root)
-        manifest = json.loads((root / "manifest.json").read_bytes())
+        manifest = json.loads(read_regular_bytes(root / "manifest.json"))
         hashes = {entry["path"]: entry["sha256"] for entry in manifest["files"]}
         if check_manifest(root, files):
             raise ArchiveReadError(

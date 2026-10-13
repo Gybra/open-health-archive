@@ -104,6 +104,13 @@ def archive_files(root: Path) -> list[Path]:
     return sorted([*root.rglob("*.csv"), *root.glob("tracks/*.gpx")])
 
 
+def read_regular_bytes(path: Path) -> bytes:
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
+        if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            raise OSError("not a regular file")
+        return stream.read()
+
+
 def file_checksum(path: Path) -> str:
     def identity(value):
         return (
@@ -115,7 +122,7 @@ def file_checksum(path: Path) -> str:
             value.st_ctime_ns,
         )
 
-    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW), "rb") as stream:
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), "rb") as stream:
         before = os.fstat(stream.fileno())
         if not stat.S_ISREG(before.st_mode):
             raise OSError("not a regular file")
@@ -131,7 +138,7 @@ def check_manifest(root: Path, files: list[Path], manifest_bytes: bytes | None =
     errors = []
     try:
         manifest = json.loads(
-            (root / "manifest.json").read_bytes() if manifest_bytes is None else manifest_bytes
+            read_regular_bytes(root / "manifest.json") if manifest_bytes is None else manifest_bytes
         )
         if manifest["schema_version"] != SCHEMA_VERSION:
             errors.append("manifest: schema version mismatch")

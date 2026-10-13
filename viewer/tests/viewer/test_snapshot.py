@@ -1,5 +1,7 @@
 import json
 import os
+import subprocess
+import sys
 
 import pytest
 from viewer_archive import write_viewer_archive
@@ -76,3 +78,27 @@ def test_manifest_swap_during_hashing_rejects_snapshot(tmp_path, monkeypatch):
     monkeypatch.setattr(reader, "check_manifest", mutate)
     with pytest.raises(reader.ArchiveReadError):
         reader.verify_snapshot(root)
+
+
+@pytest.mark.parametrize("relative", ["heart_rate/2026-01.csv", "manifest.json"])
+def test_nonregular_source_is_rejected_without_blocking(tmp_path, relative):
+    root = write_viewer_archive(tmp_path)
+    path = root / relative
+    path.unlink()
+    os.mkfifo(path)
+    script = """
+import sys
+from pathlib import Path
+from healthviz.archive.reader import verify_snapshot, ArchiveReadError
+try:
+    verify_snapshot(Path(sys.argv[1]))
+except ArchiveReadError:
+    print("rejected")
+"""
+    try:
+        child = subprocess.run(
+            [sys.executable, "-c", script, str(root)], capture_output=True, text=True, timeout=3
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("source verification blocked on a nonregular file")
+    assert child.returncode == 0 and child.stdout.strip() == "rejected"
