@@ -2,8 +2,8 @@
   "files": [
     {
       "path": "calories/2026-01.csv",
-      "rows": 1,
-      "sha256": "aa24406289a7457663b8eb30022a9043550135ef4f21b19f1abe0cc1a93ede85"
+      "rows": 2,
+      "sha256": "09c88d4ddf07d0768dbfe0f03a0d8eac6bf2507c7efcc87dec862623306881c2"
     },
     {
       "path": "daily_vendor_summaries/2025.csv",
@@ -12,8 +12,8 @@
     },
     {
       "path": "devices.csv",
-      "rows": 2,
-      "sha256": "50c3a9d6612212e2cd9d8eb9e6c3efd41431c82a128769a9e37223bf2d00fe6e"
+      "rows": 3,
+      "sha256": "9ba19d702f251b59d88a4d5797f5e587a76ab6568c332728c377af934400215d"
     },
     {
       "path": "distance/2026-01.csv",
@@ -22,8 +22,18 @@
     },
     {
       "path": "heart_rate/2026-01.csv",
-      "rows": 1,
-      "sha256": "1c4742f81c6dc5df35a01a0f42e9ad170fa26b8e8aa3ccafd4adf4aa7e9d9a2c"
+      "rows": 11,
+      "sha256": "fbd63a5a243d7cce0e4559fa1db0bcfeb70f31bfbf2e4f3b97265fe75d338c6b"
+    },
+    {
+      "path": "heart_rate/2026-03.csv",
+      "rows": 3,
+      "sha256": "27ff3d8d25945e66d692549d0d0d9033023965bfa2980640fe47e550ca15b710"
+    },
+    {
+      "path": "heart_rate/2026-10.csv",
+      "rows": 2,
+      "sha256": "930e6c28b82038c50db34d718eefea500e05e831adf2e001d5a4e42d82431a78"
     },
     {
       "path": "resting_heart_rate/2026.csv",
@@ -32,13 +42,18 @@
     },
     {
       "path": "sleep_sessions/2026.csv",
-      "rows": 2,
-      "sha256": "01c8482820fff98cfd0c4ec19a5e66ae8623488d6236b549d31285d9c2f86b7d"
+      "rows": 5,
+      "sha256": "591d74c8f977b845a27334664d6b82763c43550ddbbb3be7fdd7d64cffaad40c"
     },
     {
       "path": "sleep_stages/2026-01.csv",
       "rows": 1,
       "sha256": "7c79c2485692d5b40e5e37bf81eef0fec5c435bfe4fb5f59bf71d030d42ffd96"
+    },
+    {
+      "path": "spo2/2025.csv",
+      "rows": 1,
+      "sha256": "36152c059d1563dde727bb44e68d90df18365d5e99bdfda5ac3519b012190709"
     },
     {
       "path": "spo2/2026.csv",
@@ -47,8 +62,13 @@
     },
     {
       "path": "steps/2026-01.csv",
-      "rows": 1,
-      "sha256": "a12f716c7c593b8c6e6b0c1f5d796ca371a9c7964e2d54d89f9e2b50553f58e9"
+      "rows": 3,
+      "sha256": "1ab4f6c4e73dcde843d5cb133ed3ced10ed11edcc624ac9bd17ae05e6cb50c8a"
+    },
+    {
+      "path": "tracks/elevated-walk.gpx",
+      "rows": null,
+      "sha256": "4dbc12552707ad32907c50ad30d40e27d618820a0f9771569a74351b35c480b8"
     },
     {
       "path": "tracks/walk.gpx",
@@ -62,8 +82,8 @@
     },
     {
       "path": "workouts/2026.csv",
-      "rows": 2,
-      "sha256": "4b6a0e3881d1c18959184cc3922fc429357503f5a8adc1e0ca78a4df0becd00b"
+      "rows": 3,
+      "sha256": "348a5f7aff66758e3db7ca8fdd3e232bba188016cd3da64cb48df9645c335e17"
     }
   ],
   "generator": "healthviz fixtures",

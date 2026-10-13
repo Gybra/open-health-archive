@@ -1,0 +1,3 @@
+time_utc,utc_offset,bpm,device_id,ingest,source_app,record_id
+2026-10-25T00:00:00Z,+02:00,60,fixture-watch-2,synthetic,,fold-first
+2026-10-25T01:00:00Z,+01:00,60,fixture-watch-2,synthetic,,fold-second

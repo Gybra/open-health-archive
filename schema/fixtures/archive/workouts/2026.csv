@@ -1,3 +1,4 @@
 workout_id,type,source_type,start_utc,end_utc,utc_offset,duration_s,distance_m,steps,active_kcal,total_kcal,avg_hr,max_hr,ascent_m,descent_m,ascent_computed_by,track_file,device_id,ingest,source_app,record_id
 gym,strength_training,,2026-01-01T00:00:00Z,2026-01-01T01:00:00Z,+01:00,,,,,,,,,,,,fixture-watch,synthetic,,gym
 walk,walking,,2026-01-01T00:00:00Z,2026-01-01T01:00:00Z,+01:00,,4200,,,,,,,,,tracks/walk.gpx,fixture-watch,synthetic,,workouts
+elevated-walk,walking,,2026-01-03T02:00:00Z,2026-01-03T02:30:00Z,+01:00,1800,2000,,100,,,,10,5,vendor,tracks/elevated-walk.gpx,fixture-watch,synthetic,,elevated-walk

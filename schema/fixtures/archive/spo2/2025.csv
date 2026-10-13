@@ -1,0 +1,2 @@
+time_utc,utc_offset,percent,device_id,ingest,source_app,record_id
+2025-12-31T23:30:00Z,+01:00,97,fixture-watch,synthetic,,month-boundary

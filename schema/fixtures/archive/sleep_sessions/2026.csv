@@ -1,3 +1,6 @@
 session_id,start_utc,end_utc,utc_offset,has_stages,is_complete,deep_min,light_min,rem_min,awake_min,computed_by,device_id,ingest,source_app,record_id
 night,2026-01-01T00:00:00Z,2026-01-01T01:00:00Z,+01:00,true,true,,,,,device,fixture-watch,synthetic,,sleep_sessions
 old-night,2026-01-02T00:00:00Z,2026-01-02T01:00:00Z,+01:00,false,,20,40,,0,vendor,fixture-watch,synthetic,,old-night
+main-complete,2026-01-02T22:00:00Z,2026-01-03T06:00:00Z,+01:00,false,true,,480,,,vendor,fixture-watch,synthetic,,main-complete
+nap,2026-01-03T12:00:00Z,2026-01-03T12:45:00Z,+01:00,false,true,,45,,,vendor,fixture-watch,synthetic,,nap
+incomplete,2026-01-04T00:00:00Z,2026-01-04T01:30:00Z,+01:00,false,false,,90,,,vendor,fixture-watch,synthetic,,incomplete

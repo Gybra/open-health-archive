@@ -1,0 +1,4 @@
+time_utc,utc_offset,bpm,device_id,ingest,source_app,record_id
+2026-03-29T00:00:00Z,+01:00,60,fixture-watch,synthetic,,spring-before
+2026-03-29T01:00:00Z,+02:00,60,fixture-watch,synthetic,,spring-after
+2026-03-30T10:00:00Z,+05:30,60,fixture-watch,synthetic,,travel

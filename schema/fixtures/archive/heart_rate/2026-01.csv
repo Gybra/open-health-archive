@@ -1,2 +1,12 @@
 time_utc,utc_offset,bpm,device_id,ingest,source_app,record_id
 2026-01-01T00:00:00Z,+01:00,60,fixture-watch,synthetic,,heart_rate
+2026-01-03T00:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-0
+2026-01-03T01:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-1
+2026-01-03T02:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-2
+2026-01-03T03:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-3
+2026-01-03T04:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-4
+2026-01-03T05:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-5
+2026-01-03T06:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-6
+2026-01-03T07:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-7
+2026-01-03T08:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-8
+2026-01-03T09:00:00Z,+01:00,60,fixture-watch,synthetic,,complete-9
