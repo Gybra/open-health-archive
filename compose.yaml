@@ -1,0 +1,13 @@
+services:
+  dev:
+    image: open-health-archive-dev
+    build:
+      context: .
+      target: dev
+    volumes:
+      - .:/workspace
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

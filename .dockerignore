@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!viewer/
+!viewer/pyproject.toml
+!viewer/uv.lock
+!viewer/src/
+!viewer/src/**
+viewer/src/**/__pycache__/
