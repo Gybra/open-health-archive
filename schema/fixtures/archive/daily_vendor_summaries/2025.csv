@@ -1,0 +1,2 @@
+date_local,metric,value,unit,computed_by,device_id,ingest,source_app,record_id
+2025-12-31,steps,4000,count,vendor,fixture-watch,synthetic,,daily_vendor_summaries

@@ -1,0 +1,2 @@
+date_local,bpm,computed_by,device_id,ingest,source_app,record_id
+2026-01-01,55,vendor,fixture-watch,synthetic,,resting_heart_rate

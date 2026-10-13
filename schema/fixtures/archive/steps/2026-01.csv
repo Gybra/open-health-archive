@@ -1,0 +1,2 @@
+start_utc,end_utc,utc_offset,count,device_id,ingest,source_app,record_id
+2026-01-01T00:00:00Z,2026-01-01T01:00:00Z,+01:00,80,fixture-watch,synthetic,,steps
