@@ -392,6 +392,8 @@ def main():
                     "synthetic_rows": rows,
                     "trials": args.trials,
                     "os_file_cache": "not evicted; independent worker processes",
+                    "disk_sampler": "2 ms cache-size sampler runs only in cache modes; "
+                    "conservative bias against cached timings",
                     "results": summary,
                 },
                 indent=2,
