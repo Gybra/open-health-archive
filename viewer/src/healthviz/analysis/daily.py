@@ -3,6 +3,7 @@ from datetime import timedelta
 
 import pandas as pd
 
+from healthviz.analysis.heart import resting_from_sleep
 from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import annotate, resolve_rows, source_rank
 from healthviz.archive.values import parse_offset
@@ -112,6 +113,22 @@ def daily_summary(
             group,
         )
     apply_fallback(days, tables, devices, settings)
+    eligible_nights = (
+        nights.loc[nights.date_local.map(lambda day: days[day]["complete"])]
+        if not nights.empty
+        else nights
+    )
+    for resting in resting_from_sleep(hr, eligible_nights).to_dict("records"):
+        row = days[resting["date_local"]]
+        if pd.isna(row["resting_hr"]):
+            row.update(
+                {
+                    "resting_hr": resting["bpm"],
+                    "resting_hr_physical_device_id": resting["physical_device_id"],
+                    "resting_hr_computed_by": "app",
+                    "resting_hr_quality": "derived from main sleep",
+                }
+            )
     return pd.DataFrame(days.values()).sort_values("date_local").reset_index(drop=True)
 
 
