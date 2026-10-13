@@ -13,7 +13,7 @@ from healthviz.analysis.sleep import SLEEP_COLUMNS, STAGES
 from healthviz.analysis.sources import EXTRA
 from healthviz.archive.schema import TABLES
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 DTYPES = {
     "object",
     "str",
@@ -56,7 +56,7 @@ def encode_series(series):
     if dtype not in DTYPES:
         raise ValueError("unsupported cache dtype")
     if dtype.startswith("datetime64"):
-        values = series.astype("datetime64[ns, UTC]").astype("int64").astype("Int64")
+        values = series.astype("int64").astype("Int64")
         return "time", values.mask(series.isna())
     if dtype in ("Int64", "int64"):
         return "int", series
@@ -68,6 +68,8 @@ def encode_series(series):
         values = series.dropna()
         if not values.empty and isinstance(values.iloc[0], date):
             return "date", series.map(lambda v: v.isoformat() if pd.notna(v) else None)
+        if not values.empty and all(isinstance(v, bool) for v in values):
+            return "bool", series
         if not values.empty and all(isinstance(v, Real) for v in values):
             kind = "int" if all(isinstance(v, int) for v in values) else "float"
             return kind, series
@@ -163,6 +165,13 @@ def validate_metadata(conn, metadata):
             raise ValueError("invalid cache columns")
         if name in TABLES and names != list(TABLES[name].columns):
             raise ValueError("invalid raw cache columns")
+        required = allowed[name]
+        if name == "derived_daily" and description["rows"] == 0:
+            required = {"date_local", "worn_hours", "complete", "sleep_eligible", *METRICS}
+        elif name == "derived_sleep" and description["rows"] == 0:
+            required = required - {"unknown_min"}
+        if not required.issubset(names):
+            raise ValueError("missing mandatory cache columns")
         for c in columns:
             if (
                 c["dtype"] not in DTYPES
@@ -208,7 +217,11 @@ def read_frames(path: Path) -> tuple[dict, dict]:
                 if dtype not in DTYPES or kind not in SQL_TYPES:
                     raise ValueError("unsupported cache dtype")
                 if kind == "time":
-                    series = pd.to_datetime(pd.Series(data, dtype="Int64"), unit="ns", utc=True)
+                    series = pd.to_datetime(
+                        pd.Series(data, dtype="Int64"),
+                        unit=dtype.split("[")[1].split(",")[0],
+                        utc=True,
+                    )
                     frame[column["name"]] = series.astype(dtype)
                 elif kind == "date":
                     frame[column["name"]] = pd.Series(

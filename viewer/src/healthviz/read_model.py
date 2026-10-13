@@ -139,6 +139,9 @@ def current(cache):
             return None
         path = cache / pointer["file"]
         private_path(path)
+        spill = Path(str(path) + ".tmp")
+        if spill.exists() or spill.is_symlink():
+            private_path(spill, directory=True)
         wal = Path(str(path) + ".wal")
         if wal.exists() or wal.is_symlink():
             private_path(wal)
@@ -191,8 +194,18 @@ def cleanup(cache, keep):
         r"(?:generation-[0-9a-f]{32}\.duckdb(?:\.wal)?|"
         r"\.building-generation-[0-9a-f]{32}\.duckdb(?:\.wal)?|\.pointer-[0-9a-f]{32})"
     )
+    spill_pattern = r"(?:\.building-)?generation-[0-9a-f]{32}\.duckdb\.tmp"
     for path in cache.iterdir():
-        if path.name != keep and re.fullmatch(pattern, path.name):
+        if re.fullmatch(spill_pattern, path.name):
+            private_path(path, directory=True)
+            for part in path.iterdir():
+                if re.fullmatch(r"duckdb_temp_storage_[A-Za-z0-9_-]+\.tmp", part.name):
+                    private_path(part)
+                    part.unlink()
+            # Unrecognized spill files are kept; never let them block publication.
+            if not any(path.iterdir()):
+                path.rmdir()
+        elif path.name != keep and re.fullmatch(pattern, path.name):
             private_path(path)
             path.unlink()
     fsync_directory(cache)

@@ -62,7 +62,7 @@ def test_independent_processes_under_network_guard(tmp_path):
     assert len(list(cache.glob("generation-*.duckdb"))) == 1
 
 
-@pytest.mark.parametrize("phase", ["database", "pointer"])
+@pytest.mark.parametrize("phase", ["disk-full", "database", "pointer"])
 def test_interrupted_publication_retains_previous_pointer_and_recovers(
     tmp_path, monkeypatch, phase
 ):
@@ -81,6 +81,14 @@ def test_interrupted_publication_retains_previous_pointer_and_recovers(
 
     with monkeypatch.context() as context:
         context.setattr(mod.os, "replace", fail)
+        if phase == "disk-full":
+
+            def disk_full(*args):
+                import errno
+
+                raise OSError(errno.ENOSPC, "PRIVATE-SENTINEL")
+
+            context.setattr(mod.store, "write_frames", disk_full)
         with pytest.raises(mod.ReadModelError) as error:
             mod.load_read_model(
                 root, replace(Settings(), worn_hours_threshold=11), cache_dir=cache, config=config

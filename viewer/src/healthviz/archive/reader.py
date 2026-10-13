@@ -29,9 +29,30 @@ def archive_token(root: Path) -> str:
         raise ArchiveReadError("archive: cannot read snapshot") from None
 
 
+def snapshot_identity(root: Path) -> tuple:
+    identities = []
+    for path in [root, *sorted(root.rglob("*"))]:
+        if path.is_symlink():
+            raise ArchiveReadError("archive: symlinks are not allowed")
+        value = path.lstat()
+        identities.append(
+            (
+                path.relative_to(root).as_posix(),
+                value.st_dev,
+                value.st_ino,
+                value.st_mode,
+                value.st_size,
+                value.st_mtime_ns,
+                value.st_ctime_ns,
+            )
+        )
+    return tuple(identities)
+
+
 def verify_snapshot(root: Path) -> tuple[str, str]:
     """Verify source bytes even when metadata is unchanged; never parse cached CSVs."""
     try:
+        identity = snapshot_identity(root)
         token = archive_token(root)
         manifest = read_regular_bytes(root / "manifest.json")
         files = archive_files(root)
@@ -40,7 +61,7 @@ def verify_snapshot(root: Path) -> tuple[str, str]:
         if (
             archive_token(root) != token
             or read_regular_bytes(root / "manifest.json") != manifest
-            or archive_token(root) != token
+            or snapshot_identity(root) != identity
         ):
             raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
         return token, hashlib.sha256(manifest).hexdigest()

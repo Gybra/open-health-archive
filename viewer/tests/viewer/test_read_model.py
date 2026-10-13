@@ -73,7 +73,7 @@ def test_settings_rebuild_only_derivatives(tmp_path, changes):
 
 
 @pytest.mark.parametrize(
-    "corruption", ["bytes", "metadata", "view", "wal", "pointer", "frames-type"]
+    "corruption", ["bytes", "metadata", "view", "wal", "pointer", "frames-type", "missing-daily"]
 )
 def test_corrupt_cache_rebuilds_from_valid_sources(tmp_path, corruption):
     mod = module()
@@ -98,6 +98,11 @@ def test_corrupt_cache_rebuilds_from_valid_sources(tmp_path, corruption):
                 )
                 if corruption == "frames-type":
                     metadata["frames"] = list(metadata["frames"])
+                elif corruption == "missing-daily":
+                    conn.execute(
+                        "CREATE OR REPLACE TABLE derived_daily AS SELECT _order FROM derived_daily"
+                    )
+                    metadata["frames"]["derived_daily"]["columns"] = []
                 else:
                     metadata["frames"]["steps"]["rows"] += 1
                 conn.execute("UPDATE healthviz_meta SET payload = ?", [json.dumps(metadata)])
@@ -139,6 +144,33 @@ def test_source_change_during_analysis_does_not_publish(tmp_path, monkeypatch):
     with pytest.raises(mod.ArchiveReadError):
         mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert not (cache / "current.json").exists()
+
+
+def test_nullable_object_booleans_keep_scalar_types(tmp_path):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    first = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    hit = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    assert not first.sleep.is_complete.dropna().empty
+    assert [type(v) for v in hit.sleep.is_complete] == [type(v) for v in first.sleep.is_complete]
+
+
+def test_native_utc_range_is_not_narrowed_by_cache(tmp_path):
+    from copy import deepcopy
+
+    from fixture_archive import FIXTURE_DEVICES, FIXTURE_TABLES, FIXTURE_TRACKS
+
+    from healthviz.archive.writer import write_archive
+
+    mod = module()
+    _, cache, config = prepare(tmp_path)
+    root = tmp_path / "native-range"
+    devices = [{**row, "last_seen_utc": "2500-01-01T00:00:00Z"} for row in FIXTURE_DEVICES]
+    write_archive(root, deepcopy(FIXTURE_TABLES), devices, FIXTURE_TRACKS, "synthetic")
+    expected = load_archive(root)["devices"]
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    hit = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    pd.testing.assert_frame_equal(hit.tables["devices"], expected)
 
 
 def test_format_change_rebuilds_raw_tables(tmp_path, monkeypatch):

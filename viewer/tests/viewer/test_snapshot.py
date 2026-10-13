@@ -80,6 +80,33 @@ def test_manifest_swap_during_hashing_rejects_snapshot(tmp_path, monkeypatch):
         reader.verify_snapshot(root)
 
 
+def test_change_to_already_hashed_source_is_rejected(tmp_path, monkeypatch):
+    from healthviz.archive import validate
+
+    root = write_viewer_archive(tmp_path)
+    path = root / "heart_rate/2026-01.csv"
+    token = reader.archive_token(root)
+    original = validate.file_checksum
+    hashed, changed = False, False
+
+    def change_after_hash(current):
+        nonlocal hashed, changed
+        checksum = original(current)
+        if current == path:
+            hashed = True
+        elif hashed and not changed:
+            stat = path.stat()
+            path.write_bytes(path.read_bytes().replace(b",60,", b",61,"))
+            os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            changed = True
+        return checksum
+
+    monkeypatch.setattr(validate, "file_checksum", change_after_hash)
+    with pytest.raises(reader.ArchiveReadError):
+        reader.verify_snapshot(root)
+    assert changed and reader.archive_token(root) == token
+
+
 @pytest.mark.parametrize("relative", ["heart_rate/2026-01.csv", "manifest.json"])
 def test_nonregular_source_is_rejected_without_blocking(tmp_path, relative):
     root = write_viewer_archive(tmp_path)

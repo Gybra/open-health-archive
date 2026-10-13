@@ -71,6 +71,41 @@ def test_live_snapshot_rejects_same_metadata_corruption(prepared_app):
     assert not app.get("plotly_chart")
 
 
+def test_warm_session_clears_charts_when_earlier_file_changes_during_hash(
+    prepared_app, monkeypatch
+):
+    from healthviz.archive import validate
+
+    app, _, root, _, _ = prepared_app
+    assert not app.error and not app.exception
+    for context in ("tracks", "resolved_hr", "heatmap"):
+        app.session_state[context] = {"stale": True}
+    source = root / "heart_rate/2026-01.csv"
+    original = validate.file_checksum
+    hashed, changed = False, False
+
+    def mutate(path):
+        nonlocal hashed, changed
+        result = original(path)
+        if path == source:
+            hashed = True
+        elif hashed and not changed:
+            stat = source.stat()
+            source.write_bytes(source.read_bytes().replace(b",60,", b",61,"))
+            os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            changed = True
+        return result
+
+    monkeypatch.setattr(validate, "file_checksum", mutate)
+    app.run()
+    assert changed and app.error
+    assert all(
+        context not in app.session_state
+        for context in ("snapshot", "overview_sources", "tracks", "resolved_hr", "heatmap")
+    )
+    assert not app.get("plotly_chart")
+
+
 def test_settings_and_historical_period_remain_dynamic(prepared_app):
     app, _, _, config, _ = prepared_app
     assert not app.exception and not app.error

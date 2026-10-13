@@ -57,3 +57,74 @@ def test_private_files_and_pointer_traversal(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "file_checksum", confined)
     mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert ".." not in json.loads(pointer.read_bytes())["file"]
+
+
+def test_native_spill_default_stays_inside_private_cache(tmp_path):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    candidate = cache / (".building-generation-" + "0" * 32 + ".duckdb")
+    with mod.store.connection(candidate, read_only=False) as conn:
+        assert (
+            conn.execute("SELECT current_setting('temp_directory')").fetchone()[0]
+            == str(candidate) + ".tmp"
+        )
+        assert (
+            conn.execute("SELECT current_setting('enable_external_access')").fetchone()[0] is False
+        )
+
+
+def test_unrecognized_spill_contents_do_not_block_rebuilds(tmp_path):
+    from dataclasses import replace
+
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    old = json.loads((cache / "current.json").read_bytes())["file"]
+    spill = cache / (".building-generation-" + "1" * 32 + ".duckdb.tmp")
+    spill.mkdir(mode=0o700)
+    unknown = spill / "duckdb_temp_block-7.block"
+    unknown.write_bytes(b"synthetic spill")
+    for threshold in (11, 12):
+        mod.load_read_model(
+            root,
+            replace(Settings(), worn_hours_threshold=threshold),
+            cache_dir=cache,
+            config=config,
+        )
+    assert unknown.read_bytes() == b"synthetic spill"
+    assert not (cache / old).exists()
+    assert len(list(cache.glob("generation-*.duckdb"))) == 1
+
+
+def test_shared_spill_directory_is_refused(tmp_path):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    filename = json.loads((cache / "current.json").read_bytes())["file"]
+    spill = cache / (filename + ".tmp")
+    spill.mkdir()
+    spill.chmod(0o755)
+    with pytest.raises(mod.ReadModelError):
+        mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+
+
+def test_obsolete_private_spill_directory_is_cleaned(tmp_path):
+    from dataclasses import replace
+
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    filename = json.loads((cache / "current.json").read_bytes())["file"]
+    spill = cache / (filename + ".tmp")
+    spill.mkdir(mode=0o700)
+    part = spill / "duckdb_temp_storage_S0-0.tmp"
+    part.write_bytes(b"synthetic spill")
+    part.chmod(0o600)
+    unfamiliar = cache / "keep-this-file"
+    unfamiliar.write_bytes(b"unrelated")
+    mod.load_read_model(
+        root, replace(Settings(), worn_hours_threshold=11), cache_dir=cache, config=config
+    )
+    assert not spill.exists()
+    assert unfamiliar.read_bytes() == b"unrelated"
