@@ -234,7 +234,11 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
             os.fsync(stream.fileno())
         os.replace(pointer, cache / "current.json")
         fsync_directory(cache)
-        cleanup(cache, name)
+        try:
+            cleanup(cache, name)
+        except OSError:
+            pass  # The new generation is published; leftovers are retried next publication.
+
     finally:
         candidate.unlink(missing_ok=True)
         Path(str(candidate) + ".wal").unlink(missing_ok=True)

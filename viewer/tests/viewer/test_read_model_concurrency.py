@@ -134,3 +134,106 @@ model = load_read_model""",
     module().load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert len(list(cache.glob("generation-*.duckdb"))) == 1
     assert "file" in json.loads((cache / "current.json").read_bytes())
+
+
+def test_checkpoint_failure_keeps_previous_publication(tmp_path, monkeypatch):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    first = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    pointer = (cache / "current.json").read_bytes()
+    original = mod.store.connection
+
+    class FailingCheckpoint:
+        def __init__(self, conn):
+            self.conn = conn
+
+        def __enter__(self):
+            self.inner = self.conn.__enter__()
+            return self
+
+        def __exit__(self, *exc):
+            return self.conn.__exit__(*exc)
+
+        def execute(self, sql, *args):
+            if sql == "CHECKPOINT":
+                raise mod.duckdb.IOException("PRIVATE-SENTINEL")
+            return self.inner.execute(sql, *args)
+
+        def __getattr__(self, name):
+            return getattr(self.inner, name)
+
+    def connection(path, *, read_only):
+        conn = original(path, read_only=read_only)
+        return conn if read_only else FailingCheckpoint(conn)
+
+    with monkeypatch.context() as context:
+        context.setattr(mod.store, "connection", connection)
+        with pytest.raises(mod.ReadModelError) as error:
+            mod.load_read_model(
+                root, replace(Settings(), worn_hours_threshold=11), cache_dir=cache, config=config
+            )
+    assert "PRIVATE-SENTINEL" not in str(error.value)
+    assert (cache / "current.json").read_bytes() == pointer
+    assert not list(cache.glob(".building-*"))
+    pd.testing.assert_frame_equal(
+        first.daily, mod.load_read_model(root, Settings(), cache_dir=cache, config=config).daily
+    )
+
+
+def test_cleanup_failure_does_not_fail_a_completed_publication(tmp_path, monkeypatch):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    old = cache / json.loads((cache / "current.json").read_bytes())["file"]
+    original = Path.unlink
+
+    def busy(path, *args, **kwargs):
+        if path == old:
+            raise OSError("PRIVATE-SENTINEL")
+        return original(path, *args, **kwargs)
+
+    changed = replace(Settings(), worn_hours_threshold=11)
+    with monkeypatch.context() as context:
+        context.setattr(Path, "unlink", busy)
+        published = mod.load_read_model(root, changed, cache_dir=cache, config=config)
+    assert old.exists(), "failed cleanup leaves the old generation for a later retry"
+    with patch.object(mod, "load_archive", side_effect=AssertionError("must be a hit")):
+        hit = mod.load_read_model(root, changed, cache_dir=cache, config=config)
+    pd.testing.assert_frame_equal(published.daily, hit.daily)
+    mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    assert not old.exists(), "the next publication retries cleanup"
+    assert len(list(cache.glob("generation-*.duckdb"))) == 1
+
+
+APP_WORKER = """
+import sys
+from pathlib import Path
+from unittest.mock import patch
+from healthviz.server import deny_network
+sys.addaudithook(deny_network)
+from streamlit.testing.v1 import AppTest
+import healthviz
+from healthviz import read_model
+sys.argv = ["app.py", "--archive", sys.argv[1], "--config", sys.argv[2], "--offline",
+    "--cache-dir", sys.argv[3]]
+app_file = str(Path(healthviz.__file__).parent / "dashboard/app.py")
+with patch.object(read_model, "load_archive", side_effect=AssertionError("reparsed")), \\
+        patch.object(read_model, "daily_summary", side_effect=AssertionError("recomputed")):
+    app = AppTest.from_file(app_file, default_timeout=60).run()
+assert not app.exception and not app.error, "cached app failed"
+assert app.get("plotly_chart"), "Overview charts missing"
+print("rendered")
+"""
+
+
+def test_new_process_renders_app_from_persistent_cache(tmp_path):
+    root, cache, config = prepare(tmp_path)
+    module().load_read_model(root, Settings(), cache_dir=cache, config=config)
+    child = subprocess.run(
+        [sys.executable, "-c", APP_WORKER, str(root), str(config), str(cache)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert child.returncode == 0, "cached app worker failed"
+    assert child.stdout.strip() == "rendered"
