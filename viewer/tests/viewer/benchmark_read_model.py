@@ -8,12 +8,14 @@ import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 
 def generate_archive(root: Path, *, sample_count=280_000):
+    """Fictional archive with DST/travel offsets, gaps, overlapping sources and method epochs."""
     sys.path.insert(0, str(Path(__file__).parents[1]))
     from copy import deepcopy
 
@@ -24,96 +26,196 @@ def generate_archive(root: Path, *, sample_count=280_000):
     from healthviz.archive.writer import write_archive
 
     tables = {name: [] for name in TABLES if name != "devices"}
-    start = datetime(2026, 1, 1, tzinfo=UTC)
+    start = datetime(2026, 3, 20, tzinfo=UTC)
+    dst = datetime(2026, 3, 29, 1, tzinfo=UTC)
+    days = max(1, (sample_count * 30 + 86399) // 86400)
 
-    def stamp(index):
-        return (start + timedelta(seconds=30 * index)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    def at(day, seconds=0):
+        return start + timedelta(days=day, seconds=seconds)
+
+    def stamp(instant):
+        return instant.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def offset(instant):
+        if (instant - start).days in (11, 12):
+            return "+05:30"
+        return "+02:00" if instant >= dst else "+01:00"
+
+    def worn(instant):
+        day = (instant - start).days
+        return day != 6 and not (day % 5 == 2 and instant.hour < 6)
+
+    def add(name, instant, **fields):
+        fields.setdefault("ingest", "synthetic_export")
+        tables[name].append(fixture_row(name, utc_offset=offset(instant), **fields))
+
+    def interval(name, instant, seconds, **fields):
+        add(
+            name,
+            instant,
+            start_utc=stamp(instant),
+            end_utc=stamp(instant + timedelta(seconds=seconds)),
+            **fields,
+        )
 
     for index in range(sample_count):
-        tables["heart_rate"].append(
-            fixture_row(
+        instant = at(0, 30 * index)
+        if worn(instant):
+            add(
                 "heart_rate",
-                time_utc=stamp(index),
-                utc_offset="+01:00",
-                bpm="60",
-                device_id="fixture-watch" if index % 2 else "fixture-phone",
-                ingest="synthetic_export",
-                record_id=f"sample-{index}",
+                instant,
+                time_utc=stamp(instant),
+                bpm=str(52 + index % 45),
+                record_id=f"watch-{index}",
             )
-        )
-    for name, stride, field, value in [
-        ("steps", 20, "count", "10"),
-        ("distance", 30, "distance_m", "5"),
-    ]:
-        for index in range(0, sample_count, stride):
-            tables[name].append(
-                fixture_row(
-                    name,
-                    start_utc=stamp(index),
-                    end_utc=stamp(index + 2),
-                    utc_offset="+01:00",
-                    device_id="fixture-watch",
-                    ingest="synthetic_export",
-                    record_id=f"interval-{index}",
-                    **{field: value},
+            if index % 20 == 0:
+                interval(
+                    "steps", instant, 60, count=str(10 + index % 7), record_id=f"steps-{index}"
                 )
-            )
-    tracks = {}
-    for day in range(max(1, (sample_count * 30 + 86399) // 86400)):
-        date = start + timedelta(days=day)
-        local = date.strftime("%Y-%m-%d")
+                interval(
+                    "distance",
+                    instant,
+                    60,
+                    distance_m=str(5 + index % 3),
+                    record_id=f"distance-{index}",
+                )
+    for day in range(days):
+        local = (at(day) + timedelta(hours=1)).strftime("%Y-%m-%d")
+        if day % 3 == 0:
+            for minute in range(8 * 60, 20 * 60, 10):
+                instant = at(day, minute * 60)
+                phone = dict(device_id="fixture-phone", ingest="synthetic_phone")
+                add(
+                    "heart_rate",
+                    instant,
+                    time_utc=stamp(instant),
+                    bpm="70",
+                    record_id=f"phone-{day}-{minute}",
+                    **phone,
+                )
+                if minute % 60 == 0:
+                    interval(
+                        "steps",
+                        instant,
+                        3600,
+                        count="400",
+                        record_id=f"phone-steps-{day}-{minute}",
+                        **phone,
+                    )
+        if day in (4, 5):
+            for index in range(0, 86400, 120):
+                instant = at(day, index)
+                add(
+                    "heart_rate",
+                    instant,
+                    time_utc=stamp(instant),
+                    bpm="64",
+                    device_id="fixture-watch-2",
+                    record_id=f"second-{day}-{index}",
+                )
+        for hour in range(24):
+            instant = at(day, hour * 3600)
+            if worn(instant):
+                interval(
+                    "calories",
+                    instant,
+                    3600,
+                    kind="active",
+                    kcal="12",
+                    record_id=f"active-{day}-{hour}",
+                )
+                interval(
+                    "calories",
+                    instant,
+                    3600,
+                    kind="total",
+                    kcal="85",
+                    record_id=f"total-{day}-{hour}",
+                )
+        if day == 6:
+            continue
+        add_resting = dict(
+            date_local=local, bpm=str(50 + day % 5), computed_by="vendor" if day < 7 else "app"
+        )
         tables["resting_heart_rate"].append(
             fixture_row(
                 "resting_heart_rate",
-                date_local=local,
-                bpm="54",
-                computed_by="vendor",
-                device_id="fixture-watch",
                 ingest="synthetic_export",
                 record_id=f"resting-{day}",
+                **add_resting,
             )
         )
-        tables["sleep_sessions"].append(
-            fixture_row(
-                "sleep_sessions",
-                session_id=f"night-{day}",
-                start_utc=local + "T00:00:00Z",
-                end_utc=local + "T09:00:00Z",
-                utc_offset="+01:00",
-                has_stages="false",
-                is_complete="true",
-                deep_min="120",
-                light_min="300",
-                rem_min="60",
-                awake_min="60",
-                computed_by="vendor",
-                device_id="fixture-watch",
-                ingest="synthetic_export",
-                record_id=f"night-{day}",
-            )
+        night, staged = at(day), day % 2 == 0
+        session = dict(
+            session_id=f"night-{day}",
+            start_utc=stamp(night),
+            end_utc=stamp(night + timedelta(hours=7)),
+            has_stages=str(staged).lower(),
+            is_complete="false" if day % 9 == 4 else "true",
+            computed_by="vendor",
+            record_id=f"night-{day}",
         )
-        track = f"tracks/synthetic-{day}.gpx"
-        tracks[track] = (
-            "<gpx><trk><trkseg>"
-            + "".join(f'<trkpt lat="0" lon="{index / 100000:.5f}"/>' for index in range(500))
-            + "</trkseg></trk></gpx>"
-        ).encode()
-        tables["workouts"].append(
-            fixture_row(
-                "workouts",
-                workout_id=f"workout-{day}",
-                type="walking",
-                start_utc=local + "T10:00:00Z",
-                end_utc=local + "T10:30:00Z",
-                utc_offset="+01:00",
-                duration_s="1800",
-                distance_m="2000",
-                track_file=track,
-                device_id="fixture-watch",
-                ingest="synthetic_export",
-                record_id=f"workout-{day}",
+        if not staged:
+            session.update(deep_min="90", light_min="240", rem_min="60", awake_min="30")
+        add("sleep_sessions", night, **session)
+        if staged:
+            for part, (stage, begin, end) in enumerate(
+                [
+                    ("light", 0, 120),
+                    ("deep", 120, 210),
+                    ("rem", 210, 300),
+                    ("awake", 300, 315),
+                    ("light", 315, 420),
+                ]
+            ):
+                tables["sleep_stages"].append(
+                    fixture_row(
+                        "sleep_stages",
+                        ingest="synthetic_export",
+                        session_id=f"night-{day}",
+                        start_utc=stamp(night + timedelta(minutes=begin)),
+                        end_utc=stamp(night + timedelta(minutes=end)),
+                        stage=stage,
+                        record_id=f"stage-{day}-{part}",
+                    )
+                )
+        if day % 7 == 0:
+            add(
+                "weight",
+                at(day, 6 * 3600),
+                time_utc=stamp(at(day, 6 * 3600)),
+                kg="70.5",
+                record_id=f"weight-{day}",
             )
+        if day % 2:
+            add(
+                "spo2",
+                at(day, 3 * 3600),
+                time_utc=stamp(at(day, 3 * 3600)),
+                percent="97",
+                record_id=f"spo2-{day}",
+            )
+    tracks = {}
+    for day in range(days):
+        begin = at(day, 10 * 3600)
+        workout = dict(
+            workout_id=f"workout-{day}",
+            type=("walking", "running", "cycling")[day % 3],
+            start_utc=stamp(begin),
+            end_utc=stamp(begin + timedelta(minutes=30)),
+            duration_s="1800",
+            distance_m="2000",
+            record_id=f"workout-{day}",
         )
+        if day % 2 == 0:
+            track = f"tracks/synthetic-{day}.gpx"
+            tracks[track] = (
+                "<gpx><trk><trkseg>"
+                + "".join(f'<trkpt lat="0" lon="{index / 100000:.5f}"/>' for index in range(500))
+                + "</trkseg></trk></gpx>"
+            ).encode()
+            workout["track_file"] = track
+        add("workouts", begin, **workout)
     write_archive(root, tables, deepcopy(FIXTURE_DEVICES), tracks, "synthetic-benchmark")
     assert not validate_archive(root), "synthetic generator produced an invalid archive"
     return sum(len(frame) for frame in tables.values()) + len(FIXTURE_DEVICES)
@@ -131,6 +233,23 @@ def worker(args):
 
     phases = {}
     pre_cleanup_bytes = 0
+    sampled_peak = 0
+    sampling = threading.Event()
+
+    def cache_bytes(cache):
+        total = 0
+        for path in Path(cache).rglob("*"):
+            try:
+                total += path.stat().st_size if path.is_file() else 0
+            except OSError:  # files vanish while DuckDB/cleanup run
+                pass
+        return total
+
+    def sample():
+        nonlocal sampled_peak
+        while not sampling.is_set():
+            sampled_peak = max(sampled_peak, cache_bytes(args.cache))
+            time.sleep(0.002)
 
     def instrument(module, attribute, name):
         original = getattr(module, attribute)
@@ -155,12 +274,13 @@ def worker(args):
 
         def observed_cleanup(cache, keep):
             nonlocal pre_cleanup_bytes
-            pre_cleanup_bytes = max(
-                pre_cleanup_bytes, sum(p.stat().st_size for p in cache.rglob("*") if p.is_file())
-            )
+            pre_cleanup_bytes = max(pre_cleanup_bytes, cache_bytes(cache))
             return original_cleanup(cache, keep)
 
         read_model.cleanup = observed_cleanup
+    sampler = threading.Thread(target=sample, daemon=True)
+    if args.cache:
+        sampler.start()
     with tempfile.TemporaryDirectory() as config_dir:
         config = Path(config_dir) / "config.toml"
         sys.argv = ["app.py", "--archive", args.archive, "--config", str(config), "--offline"]
@@ -191,7 +311,11 @@ def worker(args):
         app.selectbox(key="page").select("Overview").run()
         save_settings(config, Settings(worn_hours_threshold=11))
         measured("settings_rebuild", app.run)
-        metrics["pre_cleanup_bytes"] = pre_cleanup_bytes
+        sampling.set()
+        if args.cache:
+            sampler.join()
+        # Sampling can miss sub-2 ms peaks; the pre-cleanup reading is a guaranteed lower bound.
+        metrics["cache_peak_bytes"] = max(sampled_peak, pre_cleanup_bytes)
         metrics["peak_rss_kib"] = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         metrics["cache_bytes"] = (
             sum(p.stat().st_size for p in Path(args.cache).rglob("*") if p.is_file())
