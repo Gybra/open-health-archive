@@ -35,14 +35,14 @@ class PageContext:
 
 
 def open_page(name: str, **state) -> None:
-    """Button callback: callbacks run before widgets exist, so the page radio may change.
+    """Button callback; the app switches page once the menu exists (callbacks cannot).
 
-    "Day" is not in the sidebar; it is a view reached from lists and charts.
+    "Day" is not in the menu; it is a view reached from lists and charts.
     """
     if name == "Day":
         st.session_state["view"] = "Day"
     else:
-        st.session_state["page"] = name
+        st.session_state["goto"] = name
         st.session_state.pop("view", None)
     st.session_state.update(state)
 

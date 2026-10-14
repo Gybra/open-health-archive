@@ -226,6 +226,9 @@ def worker(args):
         sys.path.insert(0, args.source)
     from streamlit.testing.v1 import AppTest
 
+    sys.path.insert(0, str(Path(__file__).parents[1]))
+    from dashboard_nav import open_page
+
     import healthviz
     from healthviz.analysis import daily as analysis
     from healthviz.archive import reader
@@ -304,13 +307,13 @@ def worker(args):
         period = app.date_input(key="period")
         measured("period_rerun", lambda: period.set_value((dates.min(), dates.min())).run())
         app.date_input(key="period").set_value((dates.min(), dates.max())).run()
-        app.radio(key="page").set_value("Activity").run()
+        open_page(app, "Activity")
         view = app.segmented_control(key="activity_view")
         measured("map_first", lambda: view.set_value("Routes").run())
         measured("map_cached", app.run)
         selector = next(item for item in app.multiselect if item.label == "Activity types")
         measured("map_filter", lambda: selector.set_value([]).run())
-        app.radio(key="page").set_value("Overview").run()
+        open_page(app, "Overview")
         save_settings(config, Settings(worn_hours_threshold=11))
         measured("settings_rebuild", app.run)
         sampling.set()

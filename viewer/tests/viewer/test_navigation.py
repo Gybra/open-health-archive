@@ -14,8 +14,9 @@ def period_caption(app):
 
 def test_sidebar_lists_only_pages(tmp_path, monkeypatch):
     app = start(monkeypatch, write_viewer_archive(tmp_path / "a"), tmp_path / "c.toml")
-    assert app.sidebar.radio[0].options == PAGE_NAMES
-    for kind in ("selectbox", "multiselect", "date_input", "number_input"):
+    # Pages are menu links (st.navigation), not a radio.
+    assert [page["page_name"] for page in app._registered_pages.values()] == PAGE_NAMES
+    for kind in ("radio", "selectbox", "multiselect", "date_input", "number_input"):
         assert not app.sidebar.get(kind), kind
 
 

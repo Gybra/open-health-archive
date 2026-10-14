@@ -68,7 +68,7 @@ def test_empty_area_shows_last_reading_date(tmp_path, monkeypatch):
 def test_section_button_opens_detail(tmp_path, monkeypatch):
     app = overview(tmp_path, monkeypatch)
     next(b for b in app.button if b.label == "Sleep details →").click().run()
-    assert app.radio(key="page").value == "Sleep"
+    assert app.header[0].value == "Sleep"
     assert not app.exception and not app.error
 
 

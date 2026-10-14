@@ -18,7 +18,12 @@ def start(monkeypatch, root, config, *extra):
 
 
 def open_page(app, page):
-    return app.radio(key="page").set_value(page).run()
+    """Click a menu link. AppTest.switch_page takes files only and keeps its own page between
+    runs (a browser keeps the URL), so select the registered page directly."""
+    app._page_hash = next(
+        key for key, info in app._registered_pages.items() if info["page_name"] == page
+    )
+    return app.run()
 
 
 def show_all(app):

@@ -80,6 +80,38 @@ def period_bar(daily):
     return dates
 
 
+ICONS = {
+    "Overview": "dashboard",
+    "Sleep": "bedtime",
+    "Heart": "favorite",
+    "Activity": "directions_run",
+    "Body": "monitor_weight",
+    "Settings": "settings",
+}
+
+
+def menu(render):
+    """Sidebar menu links with their own URLs; a button's page request switches here."""
+    pages = {
+        name: st.Page(
+            render,
+            title=name,
+            icon=f":material/{ICONS[name]}:",
+            url_path=module.removesuffix("_page"),
+            default=name == "Overview",
+        )
+        for name, module in PAGES.items()
+    }
+    current = st.navigation({"Open Health Archive": list(pages.values())})
+    goto = st.session_state.pop("goto", None)
+    if goto and goto != current.title:
+        st.switch_page(pages[goto])
+    if st.session_state.get("shown_page") != current.title:
+        st.session_state.pop("view", None)
+    st.session_state["shown_page"] = current.title
+    return current
+
+
 def top_bar(daily, settings, choices, config):
     """Period and apps apply to every page; the header says how fresh the data is."""
     left, right = st.columns([3, 2])
@@ -148,10 +180,13 @@ def main():
     _, tables, daily = st.session_state["snapshot"]
     if tables["devices"].vendor.fillna("").eq("Fictional").all() and not tables["devices"].empty:
         st.info("Synthetic demonstration archive — not personal measurements.")
-    st.sidebar.title("Open Health Archive")
-    page = st.sidebar.radio(
-        "Page", list(PAGES), key="page", on_change=lambda: st.session_state.pop("view", None)
-    )
+    shown = {}
+
+    def render_page():
+        importlib.import_module("healthviz.dashboard." + shown["module"]).render(shown["context"])
+
+    current = menu(render_page)
+    page = current.title
     st.sidebar.caption(
         "Local, vendor-neutral history · Not a medical device. No diagnosis or medical advice. "
         "Cloud providers can read plaintext archives."
@@ -174,10 +209,10 @@ def main():
             return
         start, end = period
     context = PageContext(tables, daily, settings, start, end, archive, args.offline, args.config)
-    name = "day" if view == "Day" else PAGES[page]
     if page == "Overview" and view is None:
         duplicate_notice(context)
-    importlib.import_module("healthviz.dashboard." + name).render(context)
+    shown.update(module="day" if view == "Day" else PAGES[page], context=context)
+    current.run()
 
 
 if __name__ == "__main__":
