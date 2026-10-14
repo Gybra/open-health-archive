@@ -127,6 +127,8 @@ with "Same physical device as" and overlaps are never added together. The sideba
 "Apps" filter shows one, several or all apps; the Xiaomi history and Mi Fitness via
 Health Connect appear together as "Mi Fitness".
 
+To support another source, see [docs/adding-an-importer.md](docs/adding-an-importer.md).
+
 ## Consult an archive locally
 
 Keep the archive and personal configuration outside this repository. Google Drive
