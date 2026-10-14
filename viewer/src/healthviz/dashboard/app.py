@@ -6,6 +6,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from healthviz import read_model
 from healthviz.analysis.apps import app_choices, select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
@@ -172,6 +173,9 @@ def main():
                     cache_dir=args.cache_dir,
                     config=args.config,
                     on_build=building,
+                )
+                read_model.start_precompute(
+                    archive, args.cache_dir, args.config, model.content_digest, settings
                 )
                 if built:
                     notice.caption(

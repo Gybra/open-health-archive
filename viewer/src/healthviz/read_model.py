@@ -2,7 +2,9 @@
 
 import fcntl
 import hashlib
+import itertools
 import json
+import multiprocessing
 import os
 import re
 import stat
@@ -16,13 +18,13 @@ import duckdb
 import pandas as pd
 
 from healthviz import read_model_store as store
-from healthviz.analysis.apps import select_apps
+from healthviz.analysis.apps import app_choices, select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import resolve_rows
 from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
 from healthviz.archive.validate import file_checksum
-from healthviz.settings import Settings
+from healthviz.settings import Settings, load_settings
 
 
 class ReadModelError(Exception):
@@ -37,6 +39,8 @@ GENERATION = r"generation-[0-9a-f]{32}\.duckdb"
 RESULTS = r"derived-[0-9a-f]{32}\.duckdb"
 DIGEST = r"[0-9a-f]{64}"
 MAX_RESULTS = 64
+# Up to this many apps every combination is prepared ahead (63 results); beyond, each app alone.
+MAX_ALL_APPS = 6
 
 
 def stamp(path: Path):
@@ -154,7 +158,7 @@ def validate_location(cache: Path, root: Path, config: Path):
             raise ReadModelError("cache: use a separate directory outside archive, config and code")
         if blocked.exists() and os.path.samefile(cache, blocked):
             raise ReadModelError("cache: directory aliases a protected location")
-    for name in (".lock", "current.json"):
+    for name in (".lock", ".precompute.lock", "current.json"):
         path = cache / name
         if path.exists() or path.is_symlink():
             private_path(path)
@@ -404,3 +408,81 @@ def load_read_model(
         raise ReadModelError(
             "cache: cannot prepare local read model; check private directory"
         ) from None
+
+
+def app_subsets(choices: list[str]) -> list[list[str]]:
+    """App choices to prepare ahead, all apps first and then from single apps up."""
+    labels = sorted(choices)
+    sizes = range(1, len(labels)) if len(labels) <= MAX_ALL_APPS else [1]
+    return [[], *[list(c) for size in sizes for c in itertools.combinations(labels, size)]]
+
+
+def same_except_apps(left: Settings, right: Settings) -> bool:
+    return replace(left, apps=[]) == replace(right, apps=[])
+
+
+def prepare_choices(root: Path, cache: Path, config: Path) -> None:
+    validate_location(cache, root, config)
+    settings = load_settings(config)
+    snapshot = verify_snapshot(root)
+    raw_key, _ = keys(snapshot[1], settings)
+    with locked(cache, exclusive=False):
+        found = current(cache)
+    if found is None or found[1]["raw_key"] != raw_key:
+        return
+    tables = raw(found[2])
+    for apps in app_subsets(app_choices(tables)):
+        # Picking other apps is what this prepares for; any other change makes it stale.
+        if not same_except_apps(load_settings(config), settings):
+            return
+        chosen = replace(settings, apps=apps)
+        derived_key = keys(snapshot[1], chosen)[1]
+        with locked(cache, exclusive=False):
+            if lookup(cache, derived_key)[1] is not None:
+                continue
+        frames = derive({k: v.copy(deep=False) for k, v in tables.items()}, chosen)
+        with locked(cache, exclusive=True):
+            if verify_snapshot(root) != snapshot:
+                return
+            latest, done = lookup(cache, derived_key)
+            if latest is None or latest[0]["file"] != found[0]["file"]:
+                return
+            if done is None:
+                publish_results(cache, latest[0], frames, raw_key, derived_key, root, snapshot)
+
+
+def precompute(root: Path, cache: Path, config: Path) -> None:
+    """Prepare other app choices in a low-priority process, one run per cache at a time."""
+    os.umask(0o077)
+    os.nice(10)
+    fd = os.open(cache / ".precompute.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(fd, "r+b") as lock:
+        private_path(cache / ".precompute.lock")
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return
+        try:
+            prepare_choices(root, cache, config)
+        except (OSError, ValueError, KeyError, TypeError, duckdb.Error, ArchiveReadError):
+            return  # Only a head start: the viewer builds any missing choice when it is picked.
+
+
+# Background runs already started by this viewer process, by data and settings other than apps.
+started = {}
+
+
+def start_precompute(root: Path, cache: Path, config: Path, content_digest: str, settings):
+    key = (str(cache), content_digest, keys(content_digest, replace(settings, apps=[]))[1])
+    if key in started:
+        # shortcut: a run stopped by a settings change is not restarted if those settings come
+        # back in the same viewer process; missing choices are still built when picked.
+        return None
+    multiprocessing.active_children()  # reap finished runs
+    # spawn, not fork: the server process already runs threads.
+    process = multiprocessing.get_context("spawn").Process(
+        target=precompute, args=(root, cache, config), daemon=True
+    )
+    process.start()
+    started[key] = process
+    return process

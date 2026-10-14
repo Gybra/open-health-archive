@@ -217,11 +217,17 @@ existing viewer yourself before reusing port 8501; the overlay retains loopback 
 Omit the overlay and `--cache-dir` to keep the original nonpersistent mode.
 
 First preparation may be slower; later starts skip CSV parsing and full daily analysis.
-Every rerun still hashes current CSV/GPX content, and disk hits verify the DB before
-and after materialization. This is not an mtime shortcut and not a promise of a
-particular speedup. Changed sources/settings/code invalidate preparation; settings
-or analysis-only changes can reuse validated raw tables. Filters and historical end
-dates remain computed on demand using full-history inputs. First Map use still parses
+Every rerun still hashes current CSV/GPX content, and disk reads verify the DB before
+and after materialization; a viewer process then reuses what it read, for refreshes
+and new tabs, while the file and its pointer are unchanged. This is not a promise of
+a particular speedup. Changed sources/code invalidate preparation; settings or
+analysis-only changes reuse validated raw tables and store their results in a small
+separate file, so returning to an earlier Apps choice is a hit (at most 64 are kept).
+After a preparation, a low-priority background process prepares the other Apps
+choices: every combination up to six apps, otherwise each app alone. It uses CPU for
+a while after each import and about one extra results file per choice; it stops if
+the archive or non-Apps settings change. Period filters and historical end dates
+remain computed on demand using full-history inputs. First Map use still parses
 tracks and computes density.
 
 Only completed immutable generations are published. Threads/processes coordinate

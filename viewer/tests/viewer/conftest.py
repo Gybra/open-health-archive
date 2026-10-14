@@ -21,3 +21,12 @@ def viewer_app(tmp_path, monkeypatch):
     )
     # The fixture spans ten months; most tests look at all of it.
     return show_all(AppTest.from_file(str(app), default_timeout=30).run())
+
+
+@pytest.fixture(autouse=True)
+def no_background_results(monkeypatch):
+    """Viewer tests stay single-process; test_read_model_background.py covers the real start."""
+    from healthviz import read_model
+
+    if hasattr(read_model, "start_precompute"):
+        monkeypatch.setattr(read_model, "start_precompute", lambda *args, **kwargs: None)
