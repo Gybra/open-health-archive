@@ -156,13 +156,10 @@ def main():
         "Local, vendor-neutral history · Not a medical device. No diagnosis or medical advice. "
         "Cloud providers can read plaintext archives."
     )
-    # Off by default and for this browser session only; --offline locks it off.
-    basemap = st.sidebar.toggle("Map background", key="basemap", disabled=args.offline)
-    offline = args.offline or not basemap
     st.sidebar.caption(
         "Offline: no basemap requests"
-        if offline
-        else "OpenStreetMap sees the areas you view on the maps."
+        if args.offline
+        else "Online maps: OSM tiles disclose the viewed area to the tile provider."
     )
     if daily.empty:
         st.info("Archive has no observations.")
@@ -176,7 +173,7 @@ def main():
         if period is None:
             return
         start, end = period
-    context = PageContext(tables, daily, settings, start, end, archive, offline, args.config)
+    context = PageContext(tables, daily, settings, start, end, archive, args.offline, args.config)
     name = "day" if view == "Day" else PAGES[page]
     if page == "Overview" and view is None:
         duplicate_notice(context)

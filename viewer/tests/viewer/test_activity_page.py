@@ -56,7 +56,7 @@ def deck_styles(app):
     return [d["mapStyle"] if d.get("mapProvider") else None for d in decks]
 
 
-def test_map_background_is_opt_in(tmp_path, monkeypatch):
+def test_maps_have_a_background_unless_offline(tmp_path, monkeypatch):
     import sys
 
     from dashboard_nav import APP, show_all
@@ -68,12 +68,9 @@ def test_map_background_is_opt_in(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "argv", argv)
     app = show_all(AppTest.from_file(APP, default_timeout=60).run())
     activity_view(app, "Routes")
-    assert app.toggle(key="basemap").value is False
-    assert deck_styles(app) == [None]
-    app.toggle(key="basemap").set_value(True).run()
     assert deck_styles(app) == ["/app/static/osm.json"]
-    assert any("OpenStreetMap sees the areas you view" in c.value for c in app.sidebar.caption)
 
 
-def test_offline_flag_locks_the_map_background(viewer_app):
-    assert viewer_app.toggle(key="basemap").disabled
+def test_offline_maps_have_no_background(viewer_app):
+    activity_view(viewer_app, "Routes")
+    assert deck_styles(viewer_app) == [None]

@@ -239,10 +239,8 @@ erasure and does not delete OS/back-up copies. Protect this directory like the a
 
 Archives are plaintext. A cloud storage provider can read them if you sync them to
 Google Drive or another service. Healthviz does not upload files. GPS tracks reveal
-locations: keep archives private and backed up. Maps have no background until you
-turn on "Map background" in the sidebar (for that browser session only); the browser
-then requests OSM tiles, revealing the viewed area to OpenStreetMap. `--offline` keeps
-it off.
+locations: keep archives private and backed up. Online maps request OSM tiles in
+the browser, revealing the viewed area to that provider; `--offline` uses no basemap.
 Streamlit telemetry and remote deployment controls are disabled. A standard-library
 audit hook blocks Python socket connections and outbound DNS before framework
 startup; it is not a sandbox for arbitrary native code. No persistent health-data
