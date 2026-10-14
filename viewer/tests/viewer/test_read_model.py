@@ -276,3 +276,20 @@ def test_persisted_connection_cannot_write_or_read_external_files(tmp_path):
         assert conn.execute("SELECT current_setting('autoload_known_extensions')").fetchone() == (
             False,
         )
+
+
+def test_hit_matches_frames_on_a_varied_archive(tmp_path):
+    from benchmark_read_model import generate_archive
+
+    mod = module()
+    root, cache = tmp_path / "archive", tmp_path / "cache"
+    cache.mkdir(mode=0o700)
+    # Offsets, a +05:30 trip, gaps, nullable columns, overlapping sources and GPX workouts.
+    generate_archive(root, sample_count=12_000)
+    config = tmp_path / "config/config.toml"
+    first = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    hit = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    for name, frame in load_archive(root).items():
+        pd.testing.assert_frame_equal(hit.tables[name], frame)
+    for name in ("daily", "sleep", "workouts"):
+        pd.testing.assert_frame_equal(getattr(hit, name), getattr(first, name))

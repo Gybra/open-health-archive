@@ -209,28 +209,37 @@ def read_frames(path: Path) -> tuple[dict, dict]:
         frames = {}
         for name, description in metadata["frames"].items():
             columns = description["columns"]
-            values = conn.execute(f'SELECT * FROM "{name}" ORDER BY _order').fetchall()
+            # Whole columns (Arrow), not row tuples: the per-value Python work stays on dates
+            # and object columns, whose scalar types must come back exactly.
+            table = conn.execute(f'SELECT * FROM "{name}" ORDER BY _order').to_arrow_table()
             frame = pd.DataFrame()
-            for index, column in enumerate(columns, 1):
-                data = [row[index] for row in values]
+            for column, values in zip(columns, table.columns[1:], strict=True):
                 dtype, kind = column["dtype"], column["kind"]
                 if dtype not in DTYPES or kind not in SQL_TYPES:
                     raise ValueError("unsupported cache dtype")
                 if kind == "time":
                     series = pd.to_datetime(
-                        pd.Series(data, dtype="Int64"),
+                        pd.Series(values.to_pandas(types_mapper=pd.ArrowDtype)).astype("Int64"),
                         unit=dtype.split("[")[1].split(",")[0],
                         utc=True,
                     )
                     frame[column["name"]] = series.astype(dtype)
                 elif kind == "date":
                     frame[column["name"]] = pd.Series(
-                        [date.fromisoformat(v) if v is not None else None for v in data],
+                        [
+                            date.fromisoformat(v) if v is not None else None
+                            for v in values.to_pylist()
+                        ],
                         dtype=dtype,
                     )
-                else:
-                    if dtype == "object" and column["missing_na"]:
+                elif dtype == "object":
+                    data = values.to_pylist()
+                    if column["missing_na"]:
                         data = [pd.NA if v is None else v for v in data]
                     frame[column["name"]] = pd.Series(data, dtype=dtype)
+                else:
+                    frame[column["name"]] = pd.Series(
+                        values.to_pandas(types_mapper=pd.ArrowDtype)
+                    ).astype(dtype)
             frames[name] = frame
         return metadata, frames
