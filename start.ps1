@@ -58,7 +58,9 @@ New-Item -ItemType Directory -Force -Path $ConfigDir | Out-Null
 [IO.File]::WriteAllLines($Prefs, [string[]]@("archive_dir=$archive", "import_dir=$imports"))
 $cache = if ($env:HEALTHVIZ_CACHE_DIR) { $env:HEALTHVIZ_CACHE_DIR } else { Join-Path $env:LOCALAPPDATA 'OpenHealthArchive\viewer' }
 $cacheParent = Split-Path -Parent $cache
-New-Item -ItemType Directory -Force -Path $cacheParent | Out-Null
+if (-not (Test-Path -LiteralPath $cacheParent -PathType Container)) {
+    New-Item -ItemType Directory -Force -Path $cacheParent | Out-Null
+}
 
 $label = $imports
 if ($imports.StartsWith($env:USERPROFILE + '\')) { $label = '~' + $imports.Substring($env:USERPROFILE.Length) }
@@ -78,7 +80,7 @@ if ((Invoke-Compose build viewer) -ne 0) {
 if (-not (Test-Path -LiteralPath $cache -PathType Container)) {
     & docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges:true `
         --mount "type=bind,src=$cacheParent,dst=/cache-parent" open-health-archive-viewer `
-        python -c "import os; os.mkdir('/cache-parent/viewer', 0o700)" | Out-Host  # no inner double quotes: PowerShell 5 drops them
+        python -c "import os, sys; os.mkdir('/cache-parent/' + sys.argv[1], 0o700)" (Split-Path -Leaf $cache) | Out-Host  # no inner double quotes: PowerShell 5 drops them
     if ($LASTEXITCODE -ne 0) { Stop-Launcher 'Could not create the private cache folder.' }
 }
 Invoke-Compose stop viewer | Out-Null  # nothing to stop on first run

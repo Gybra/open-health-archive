@@ -71,7 +71,10 @@ printf 'archive_dir=%s\nimport_dir=%s\n' "$archive" "$imports" > "$PREFS"
 chmod 600 "$PREFS"
 cache=${HEALTHVIZ_CACHE_DIR:-$(cache_dir)}
 cache_parent=$(dirname "$cache")
-mkdir -p "$cache_parent" && chmod 700 "$cache_parent"
+# Only a parent this script creates is made private; an existing one is left as it is.
+if [ ! -d "$cache_parent" ]; then
+    mkdir -p "$cache_parent" && chmod 700 "$cache_parent"
+fi
 
 label=$imports
 case $imports in "$HOME"/*) label="~/${imports#"$HOME"/}" ;; esac
@@ -89,7 +92,7 @@ fi
 if [ ! -d "$cache" ]; then
     docker run --rm --network none --cap-drop ALL --security-opt no-new-privileges:true \
         --mount "type=bind,src=$cache_parent,dst=/cache-parent" open-health-archive-viewer \
-        python -c 'import os; os.mkdir("/cache-parent/viewer", 0o700)' ||
+        python -c 'import os, sys; os.mkdir("/cache-parent/" + sys.argv[1], 0o700)' "$(basename "$cache")" ||
         die "Could not create the private cache folder."
 fi
 compose stop viewer >/dev/null 2>&1 || true

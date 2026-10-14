@@ -166,3 +166,25 @@ def test_cache_dir_can_be_chosen(home):
 
     assert result.returncode == 0, result.stderr
     assert "os.mkdir" not in (home / "docker.log").read_text()
+
+
+def test_cache_override_with_any_name_leaves_its_parent_alone(home):
+    parent = home / "shared"
+    parent.mkdir(mode=0o755)
+    env = {
+        "HOME": str(home),
+        "PATH": f"{home / 'bin'}:{os.environ['PATH']}",
+        "STUB_LOG": str(home / "docker.log"),
+        "HEALTHVIZ_CACHE_DIR": str(parent / "oha-cache"),
+    }
+
+    result = subprocess.run(
+        ["sh", str(START)], input=answers(home), env=env, capture_output=True, text=True
+    )
+
+    assert result.returncode == 0, result.stderr
+    mkdir = next(
+        line for line in (home / "docker.log").read_text().splitlines() if "os.mkdir" in line
+    )
+    assert mkdir.endswith(" oha-cache") and f"src={parent}," in mkdir
+    assert oct(parent.stat().st_mode & 0o777) == "0o755"
