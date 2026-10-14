@@ -7,8 +7,7 @@ import streamlit as st
 
 from healthviz.analysis.devices import INGESTS
 from healthviz.analysis.gps import map_deck, parse_track, route_profile
-from healthviz.analysis.heart import max_hr, zone_seconds
-from healthviz.analysis.sources import resolve_rows
+from healthviz.analysis.heart import max_hr, workout_heart_rate, zone_seconds
 from healthviz.archive.gpx import track_bytes
 from healthviz.archive.reader import ArchiveReadError, archive_token
 from healthviz.archive.validate import safe_track_path
@@ -75,14 +74,15 @@ def cached_tracks(archive, paths):
     return {path: entry[0] for path, entry in cache.items()}
 
 
-def resolved_hr(tables, settings):
-    key = st.session_state["snapshot"][0]
-    state = st.session_state.get("resolved_hr")
-    if state is None or state[0] != key:
-        hr, _ = resolve_rows("heart_rate", tables["heart_rate"], tables["devices"], settings)
-        state = (key, hr)
-        st.session_state["resolved_hr"] = state
-    return state[1]
+def resolved_hr(context):
+    """Resolved heart rate inside the snapshot's workouts, once per snapshot."""
+    tables = context.tables
+    return per_snapshot(
+        "resolved_hr",
+        lambda: workout_heart_rate(
+            tables["heart_rate"], derived(context)[1], tables["devices"], context.settings
+        ),
+    )
 
 
 def local(row, column):
@@ -172,8 +172,8 @@ def summary_numbers(workout):
 
 def heart_rate(context, workout):
     """Zones and the heart-rate curve on the workout's local clock."""
-    tables, settings = context.tables, context.settings
-    hr = resolved_hr(tables, settings)
+    settings = context.settings
+    hr = resolved_hr(context)
     samples = hr.loc[(hr.time_utc >= workout.start_utc) & (hr.time_utc < workout.end_utc)]
     # A year of workouts is scanned per day; keep each day's answer for the snapshot.
     known = per_snapshot("max_hr", dict)

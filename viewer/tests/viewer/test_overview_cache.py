@@ -36,7 +36,7 @@ def test_workout_rerun_reuses_resolved_workouts_and_max_hr(viewer_app):
 
     activity_view(viewer_app, "Workouts")
     with (
-        patch("healthviz.dashboard.workouts.resolve_rows", wraps=resolve_rows) as resolve,
+        patch("healthviz.analysis.heart.resolve_rows", wraps=resolve_rows) as resolve,
         patch("healthviz.dashboard.workouts.max_hr", wraps=heart.max_hr) as maximum,
     ):
         viewer_app.run()

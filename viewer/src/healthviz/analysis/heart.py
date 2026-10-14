@@ -1,9 +1,31 @@
 import calendar
 from datetime import date, timedelta
 
+import numpy as np
 import pandas as pd
 
+from healthviz.analysis.sources import resolve_rows
 from healthviz.settings import Settings
+
+
+def workout_heart_rate(
+    rows: pd.DataFrame, workouts: pd.DataFrame, devices: pd.DataFrame, settings: Settings
+) -> pd.DataFrame:
+    """Resolved heart rate inside workouts, without resolving the whole archive.
+
+    Sources compete per local hour, so every sample that competes with one inside a workout
+    lies within an hour of it; the samples inside get the same winner as a full resolution.
+    """
+    margin = pd.Timedelta(hours=1)
+    order = np.argsort(rows.time_utc.to_numpy(), kind="stable")
+    times = rows.time_utc.to_numpy()[order]
+    starts = np.searchsorted(times, (workouts.start_utc - margin).to_numpy(), side="left")
+    ends = np.searchsorted(times, (workouts.end_utc + margin).to_numpy(), side="right")
+    depth = np.zeros(len(rows) + 1, dtype=int)
+    np.add.at(depth, starts, 1)
+    np.add.at(depth, ends, -1)
+    keep = order[np.cumsum(depth)[:-1] > 0]
+    return resolve_rows("heart_rate", rows.iloc[np.sort(keep)], devices, settings)[0]
 
 
 def max_hr(
