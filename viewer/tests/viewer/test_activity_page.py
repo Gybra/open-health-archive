@@ -49,3 +49,31 @@ def test_routes_view_stays_offline(viewer_app):
     assert not viewer_app.exception and not viewer_app.error
     decks = viewer_app.get("deck_gl_json_chart")
     assert decks and all("http" not in json.dumps(json.loads(d.proto.json)) for d in decks)
+
+
+def deck_styles(app):
+    decks = [json.loads(d.proto.json) for d in app.get("deck_gl_json_chart")]
+    return [d["mapStyle"] if d.get("mapProvider") else None for d in decks]
+
+
+def test_map_background_is_opt_in(tmp_path, monkeypatch):
+    import sys
+
+    from dashboard_nav import APP, show_all
+    from streamlit.testing.v1 import AppTest
+    from viewer_archive import write_viewer_archive
+
+    root = write_viewer_archive(tmp_path / "archive")
+    argv = ["app.py", "--archive", str(root), "--config", str(tmp_path / "config.toml")]
+    monkeypatch.setattr(sys, "argv", argv)
+    app = show_all(AppTest.from_file(APP, default_timeout=60).run())
+    activity_view(app, "Routes")
+    assert app.toggle(key="basemap").value is False
+    assert deck_styles(app) == [None]
+    app.toggle(key="basemap").set_value(True).run()
+    assert deck_styles(app) == ["/app/static/osm.json"]
+    assert any("OpenStreetMap sees the areas you view" in c.value for c in app.sidebar.caption)
+
+
+def test_offline_flag_locks_the_map_background(viewer_app):
+    assert viewer_app.toggle(key="basemap").disabled

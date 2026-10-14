@@ -44,7 +44,7 @@ services:
         bind:
           create_host_path: false
   viewer:
-    command: [healthviz, view, /archive, --config, /config/config.toml, --container, --offline, --cache-dir, /cache]
+    command: [healthviz, view, /archive, --config, /config/config.toml, --container, --cache-dir, /cache]
     volumes:
       - type: bind
         source: ${HEALTHVIZ_CACHE_DIR:?Set a separate private cache directory explicitly}
