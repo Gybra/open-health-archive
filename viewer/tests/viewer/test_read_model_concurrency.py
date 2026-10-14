@@ -192,23 +192,25 @@ def test_cleanup_failure_does_not_fail_a_completed_publication(tmp_path, monkeyp
             raise OSError("PRIVATE-SENTINEL")
         return original(path, *args, **kwargs)
 
-    changed = replace(Settings(), worn_hours_threshold=11)
+    # Settings changes keep the generation; a new storage format makes a new one.
+    version = mod.store.FORMAT_VERSION
+    monkeypatch.setattr(mod.store, "FORMAT_VERSION", version + 1)
     with monkeypatch.context() as context:
         context.setattr(Path, "unlink", busy)
-        published = mod.load_read_model(root, changed, cache_dir=cache, config=config)
+        published = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert old.exists(), "failed cleanup leaves the old generation for a later retry"
     with patch.object(mod, "load_archive", side_effect=AssertionError("must be a hit")):
-        hit = mod.load_read_model(root, changed, cache_dir=cache, config=config)
+        hit = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     pd.testing.assert_frame_equal(published.daily, hit.daily)
     stranded = cache / json.loads((cache / "current.json").read_bytes())["file"]
+    monkeypatch.setattr(mod.store, "FORMAT_VERSION", version + 2)
     with monkeypatch.context() as context:
         context.setattr(Path, "unlink", busy)
         # Visit the undeletable copy first so the remaining entries depend on per-entry handling.
         context.setattr(Path, "iterdir", lambda path: iter(sorted(listing(path), key=old.__ne__)))
-        mod.load_read_model(
-            root, replace(Settings(), worn_hours_threshold=12), cache_dir=cache, config=config
-        )
+        mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert old.exists() and not stranded.exists(), "one failure must not strand other copies"
+    monkeypatch.setattr(mod.store, "FORMAT_VERSION", version + 3)
     mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert not old.exists(), "the next publication retries cleanup"
     assert len(list(cache.glob("generation-*.duckdb"))) == 1

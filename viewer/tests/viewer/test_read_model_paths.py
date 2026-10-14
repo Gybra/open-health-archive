@@ -74,9 +74,7 @@ def test_native_spill_default_stays_inside_private_cache(tmp_path):
         )
 
 
-def test_unrecognized_spill_contents_do_not_block_rebuilds(tmp_path):
-    from dataclasses import replace
-
+def test_unrecognized_spill_contents_do_not_block_rebuilds(tmp_path, monkeypatch):
     mod = module()
     root, cache, config = prepare(tmp_path)
     mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
@@ -85,13 +83,11 @@ def test_unrecognized_spill_contents_do_not_block_rebuilds(tmp_path):
     spill.mkdir(mode=0o700)
     unknown = spill / "duckdb_temp_block-7.block"
     unknown.write_bytes(b"synthetic spill")
-    for threshold in (11, 12):
-        mod.load_read_model(
-            root,
-            replace(Settings(), worn_hours_threshold=threshold),
-            cache_dir=cache,
-            config=config,
-        )
+    version = mod.store.FORMAT_VERSION
+    for step in (1, 2):
+        # A new storage format makes a new generation; settings changes would keep this one.
+        monkeypatch.setattr(mod.store, "FORMAT_VERSION", version + step)
+        mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert unknown.read_bytes() == b"synthetic spill"
     assert not (cache / old).exists()
     assert len(list(cache.glob("generation-*.duckdb"))) == 1

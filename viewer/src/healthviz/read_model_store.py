@@ -139,14 +139,15 @@ def validate_metadata(conn, metadata):
         or set(metadata) != {"version", "raw_key", "derived_key", "frames"}
         or not isinstance(metadata["frames"], dict)
         or metadata["version"] != FORMAT_VERSION
-        or set(metadata["frames"]) != set(allowed)
+        # A generation holds everything; a results file only one app choice's derived frames.
+        or set(metadata["frames"]) not in (set(allowed), {n for n in allowed if n not in TABLES})
     ):
         raise ValueError("unsupported cache contract")
     catalog = conn.execute(
         "SELECT table_name, table_type FROM information_schema.tables "
         "WHERE table_catalog = current_database()"
     ).fetchall()
-    if set(catalog) != {(name, "BASE TABLE") for name in [*allowed, "healthviz_meta"]}:
+    if set(catalog) != {(name, "BASE TABLE") for name in [*metadata["frames"], "healthviz_meta"]}:
         raise ValueError("unexpected cache catalog")
     if conn.execute(
         "SELECT count(*) FROM duckdb_functions() WHERE database_name = current_database() "
