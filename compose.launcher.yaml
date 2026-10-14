@@ -1,4 +1,4 @@
-# Used by start.sh / start.ps1 with compose.yaml. The import container has no network
+# Used by start.sh with compose.yaml. The import container has no network
 # and sees only the export folder (read-only), the archive and the private config.
 # A fixed project name keeps one viewer container wherever the checkout lives.
 name: open-health-archive
