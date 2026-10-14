@@ -13,6 +13,7 @@ import healthviz
 from healthviz.analysis.apps import app_choices, app_label, select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.archive.reader import load_archive
+from healthviz.dashboard.format import literal
 from healthviz.read_model import load_read_model
 from healthviz.settings import Settings, load_settings
 
@@ -151,8 +152,9 @@ def test_settings_page_shows_import_status(tmp_path, monkeypatch):
     texts = " ".join(
         str(e.value) for kind in ("error", "warning", "caption") for e in app.get(kind)
     )
-    assert "unsupported Health Connect export format" in texts
-    assert "Old.zip" in texts
+    # Archive and status text is Markdown-escaped; the browser shows it unchanged.
+    assert literal("unsupported Health Connect export format") in texts
+    assert literal("Old.zip") in texts
     assert "format 27 not yet tested" in texts
     assert "elevation gained: 204" in texts
-    assert "~/Downloads" in texts
+    assert literal("~/Downloads") in texts

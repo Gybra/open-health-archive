@@ -1,5 +1,6 @@
 """Readable values: ISO dates with weekday, 24-hour clock, metric units."""
 
+import re
 from datetime import date
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -8,6 +9,17 @@ import pandas as pd
 from healthviz.analysis.usual import Comparison
 
 THIN = "\u202f"  # narrow no-break space between thousands
+
+
+MARKDOWN = re.compile(r"([\\`*_{}\[\]()#+\-.!|<>~$])")
+
+
+def literal(text) -> str:
+    """Archive text inside elements that render Markdown: no image, link or emphasis forms.
+
+    Workout types and device names come from any app writing to Health Connect.
+    """
+    return MARKDOWN.sub(r"\\\1", str(text))
 
 
 def day_text(day: date) -> str:

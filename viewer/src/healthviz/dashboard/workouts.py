@@ -15,7 +15,7 @@ from healthviz.archive.validate import safe_track_path
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.charts import filtered, overlap_audit, raw_data
 from healthviz.dashboard.context import device_names, open_page
-from healthviz.dashboard.format import day_text, kcal, km, minutes_text, pace_text
+from healthviz.dashboard.format import day_text, kcal, km, literal, minutes_text, pace_text
 
 PACED = ("walking", "running", "hiking")
 
@@ -244,7 +244,9 @@ def route(context, workout, samples):
 
 def workout_detail(context, workout) -> dict[str, pd.DataFrame]:
     start, end = local(workout, "start_utc"), local(workout, "end_utc")
-    st.subheader(f"{type_label(workout.type)} · {day_text(start.date())} {start:%H:%M}–{end:%H:%M}")
+    st.subheader(
+        f"{literal(type_label(workout.type))} · {day_text(start.date())} {start:%H:%M}–{end:%H:%M}"
+    )
     summary_numbers(workout)
     st.button(
         "Open this day →", on_click=open_page, args=("Day",), kwargs={"day": workout.date_local}

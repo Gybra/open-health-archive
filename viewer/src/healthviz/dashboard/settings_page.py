@@ -8,7 +8,7 @@ import streamlit as st
 
 from healthviz.analysis.devices import suggest_duplicates
 from healthviz.dashboard.context import device_names, open_page, per_snapshot
-from healthviz.dashboard.format import stamp_text
+from healthviz.dashboard.format import literal, stamp_text
 from healthviz.health_connect.status import load_status
 from healthviz.settings import save_settings
 
@@ -37,7 +37,7 @@ def duplicate_notice(context) -> None:
     if not pairs:
         return
     names = device_names(context)
-    listed = "; ".join(f"{names[a]} and {names[b]}" for a, b in pairs)
+    listed = "; ".join(f"{literal(names[a])} and {literal(names[b])}" for a, b in pairs)
     st.info(
         f"{listed} report matching daily steps. If they are the same physical device, "
         "associate them in Settings so one is chosen instead of both being compared."
@@ -48,7 +48,10 @@ def duplicate_notice(context) -> None:
 def answer_duplicates(context, names) -> None:
     settings = context.settings
     for a, b in duplicates(context):
-        st.info(f"{names[a]} and {names[b]} report matching daily steps. Same physical device?")
+        st.info(
+            f"{literal(names[a])} and {literal(names[b])} report matching daily steps. "
+            "Same physical device?"
+        )
         same, different = st.columns(2)
         if same.button("Same physical device", key=f"same-{a}-{b}"):
             target = settings.device_aliases.get(a, a)
@@ -138,18 +141,18 @@ def import_status(path, timezone):
     if status is None:
         st.caption("No Health Connect import yet.")
         return
-    folder = f" from {status.folder}" if status.folder else ""
+    folder = f" from {literal(status.folder)}" if status.folder else ""
     if status.error:
-        st.error(f"Health Connect import failed{folder}: {status.error}")
+        st.error(f"Health Connect import failed{folder}: {literal(status.error)}")
     elif status.zip_name:
         st.caption(
-            f"Health Connect: {status.zip_name}{folder}, imported "
+            f"Health Connect: {literal(status.zip_name)}{folder}, imported "
             f"{stamp_text(status.imported_at, timezone)}"
         )
     last = status.last_success or {}
     if status.error and last:
         st.caption(
-            f"Last successful import: {last.get('zip_name')} at "
+            f"Last successful import: {literal(last.get('zip_name'))} at "
             f"{stamp_text(last.get('imported_at'), timezone)}"
         )
     if not status.format_tested and status.format_version is not None:
