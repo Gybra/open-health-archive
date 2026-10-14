@@ -14,7 +14,7 @@ JAN = 1_767_258_000_000  # 2026-01-01T09:00:00Z
 
 
 def uuid(n: int) -> bytes:
-    return bytes([n % 256] * 16)
+    return n.to_bytes(16, "big")
 
 
 def uuid_hex(n: int) -> str:
@@ -58,6 +58,21 @@ def instant(n, time_ms, *, app_id=1, device_id=1, offset_s=3600, **values):
         time=time_ms,
         zone_offset=offset_s,
         **values,
+    )
+
+
+MISSING = 5e-324  # Health Connect stores an absent altitude or accuracy as Double.MIN_VALUE
+
+
+def route_point(parent, millis, latitude, longitude, altitude=MISSING):
+    return dict(
+        parent_key=parent,
+        timestamp_millis=millis,
+        latitude=latitude,
+        longitude=longitude,
+        altitude=altitude,
+        horizontal_accuracy=MISSING,
+        vertical_accuracy=MISSING,
     )
 
 
