@@ -24,7 +24,7 @@ def test_slow_steps_show_a_timed_loader(tmp_path, monkeypatch):
     assert not app.exception and not app.error
     texts = {text for text, timed in shown if timed}
     for expected in (
-        "Validating archive and preparing local read model…",
+        "Opening the archive…",
         "Loading Overview…",
         "Loading Heart…",
         "Preparing raw data…",

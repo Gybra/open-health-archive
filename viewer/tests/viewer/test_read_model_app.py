@@ -118,3 +118,12 @@ def test_settings_and_historical_period_remain_dynamic(prepared_app):
     set_period(app, daily.date_local.min(), daily.date_local.min())
     assert not app.exception and not app.error
     assert len(app.session_state["snapshot"][2]) > 1, "filter must retain full baseline history"
+
+
+def test_only_a_real_build_says_it_is_building(prepared_app):
+    app, path, _, _, persistent = prepared_app
+    built = [c.value for c in app.caption if c.value.startswith("Local read model rebuilt")]
+    assert len(built) == (1 if persistent else 0)
+    again = AppTest.from_file(path, default_timeout=30).run()
+    assert not again.exception and not again.error
+    assert not [c.value for c in again.caption if c.value.startswith("Local read model rebuilt")]

@@ -157,11 +157,27 @@ def main():
     key = (snapshot[0], settings)
     cache = st.session_state.get("snapshot")
     if cache is None or cache[0] != key:
-        with st.spinner("Validating archive and preparing local read model…", show_time=True):
+        with st.spinner("Opening the archive…", show_time=True):
             if args.cache_dir is not None:
+                notice = st.empty()
+                built = []
+
+                def building():
+                    built.append(True)
+                    notice.info("Building the local read model for new data or settings…")
+
                 model = load_read_model(
-                    archive, settings, cache_dir=args.cache_dir, config=args.config
+                    archive,
+                    settings,
+                    cache_dir=args.cache_dir,
+                    config=args.config,
+                    on_build=building,
                 )
+                if built:
+                    notice.caption(
+                        "Local read model rebuilt for the current data and settings; "
+                        "later opens reuse it."
+                    )
                 everything, daily = model.tables, model.daily
                 tables = select_apps(everything, settings.apps)
                 context = (key, model.sleep, model.workouts)

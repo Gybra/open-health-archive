@@ -233,6 +233,7 @@ def test_changed_database_during_materialization_cannot_be_a_hit(tmp_path, monke
         return result
 
     monkeypatch.setattr(mod.store, "read_frames", damage)
+    monkeypatch.setattr(mod, "loaded", {})  # a new process: nothing read yet
     with patch.object(mod, "load_archive", wraps=mod.load_archive) as parse:
         recovered = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
     assert parse.call_count == 1
@@ -293,3 +294,19 @@ def test_hit_matches_frames_on_a_varied_archive(tmp_path):
         pd.testing.assert_frame_equal(hit.tables[name], frame)
     for name in ("daily", "sleep", "workouts"):
         pd.testing.assert_frame_equal(getattr(hit, name), getattr(first, name))
+
+
+def test_reopening_reuses_frames_already_in_memory(tmp_path):
+    mod = module()
+    root, cache, config = prepare(tmp_path)
+    first = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    with patch.object(mod.store, "read_frames", side_effect=AssertionError("re-read the cache")):
+        hit = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    pd.testing.assert_frame_equal(hit.daily, first.daily)
+    # One session changing its frames must not change what the next session gets.
+    hit.daily["steps"] = -1
+    hit.tables["steps"].loc[0, "count"] = -1
+    with patch.object(mod.store, "read_frames", side_effect=AssertionError("re-read the cache")):
+        again = mod.load_read_model(root, Settings(), cache_dir=cache, config=config)
+    pd.testing.assert_frame_equal(again.daily, first.daily)
+    pd.testing.assert_frame_equal(again.tables["steps"], first.tables["steps"])

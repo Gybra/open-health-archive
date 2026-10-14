@@ -29,6 +29,34 @@ class ReadModelError(Exception):
     pass
 
 
+# Frames read from a published generation, kept while its file is untouched; refreshes and new
+# tabs reuse them instead of reading the cache again.
+loaded = {}
+
+
+def stamp(path: Path):
+    value = path.stat()
+    return str(path), value.st_ino, value.st_size, value.st_mtime_ns
+
+
+def remember(path: Path, checksum: str, state) -> None:
+    global loaded
+    loaded = {(*stamp(path), checksum): state}
+
+
+def read_generation(path: Path, checksum: str):
+    key = (*stamp(path), checksum)
+    if key in loaded:
+        return loaded[key]
+    if file_checksum(path) != checksum:
+        return None
+    state = store.read_frames(path)
+    if file_checksum(path) != checksum:
+        return None
+    remember(path, checksum, state)
+    return state
+
+
 @dataclass(frozen=True)
 class ReadModel:
     source_token: str
@@ -147,17 +175,14 @@ def current(cache):
         if wal.exists() or wal.is_symlink():
             private_path(wal)
             return None
-        if file_checksum(path) != pointer["sha256"]:
-            return None
-        metadata, frames = store.read_frames(path)
-        if file_checksum(path) != pointer["sha256"]:
-            return None
-        return metadata, frames
+        return read_generation(path, pointer["sha256"])
     except (OSError, ValueError, KeyError, TypeError, duckdb.Error):
         return None
 
 
 def result(snapshot, frames):
+    # Shallow copies: with copy-on-write, a session's edits never reach the shared frames.
+    frames = {k: v.copy(deep=False) for k, v in frames.items()}
     return ReadModel(
         *snapshot,
         {k: v for k, v in frames.items() if not k.startswith("derived_")},
@@ -224,7 +249,7 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
         raise OSError("candidate already exists")
     try:
         store.write_frames(candidate, frames, raw_key, derived_key)
-        store.read_frames(candidate)
+        state = store.read_frames(candidate)
         if verify_snapshot(root) != snapshot:
             raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
         with candidate.open("rb") as stream:
@@ -232,6 +257,7 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
         checksum = file_checksum(candidate)
         os.replace(candidate, cache / name)
         fsync_directory(cache)
+        remember(cache / name, checksum, state)
         pointer = cache / (".pointer-" + uuid.uuid4().hex)
         fd = os.open(pointer, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         with os.fdopen(fd, "w") as stream:
@@ -249,7 +275,9 @@ def publish(cache, frames, raw_key, derived_key, root, snapshot):
         Path(str(candidate) + ".wal").unlink(missing_ok=True)
 
 
-def load_read_model(root: Path, settings: Settings, *, cache_dir: Path, config: Path) -> ReadModel:
+def load_read_model(
+    root: Path, settings: Settings, *, cache_dir: Path, config: Path, on_build=lambda: None
+) -> ReadModel:
     # Keep restrictive permissions process-wide; restoring umask races other sessions.
     os.umask(0o077)
     try:
@@ -272,6 +300,7 @@ def load_read_model(root: Path, settings: Settings, *, cache_dir: Path, config: 
                 if verify_snapshot(root) != snapshot:
                     raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
                 return result(snapshot, state[1])
+            on_build()
             tables = (
                 result(snapshot, state[1]).tables
                 if state is not None and state[0]["raw_key"] == raw_key
