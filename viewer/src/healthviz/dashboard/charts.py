@@ -2,7 +2,12 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from healthviz.analysis.usual import READINGS
 from healthviz.archive.values import parse_offset
+
+FADED, AVERAGE, USUAL = "#93b4ef", "#1f6feb", "#9ca3af"
+STAGE_COLORS = {"deep": "#1e40af", "light": "#93c5fd", "rem": "#a855f7", "awake": "#fca5a5"}
+STAGE_NAMES = {"deep": "Deep", "light": "Light", "rem": "REM", "awake": "Awake"}
 
 
 def filtered(frame, start, end):
@@ -78,6 +83,108 @@ def trend(
         height=340,
     )
     return figure
+
+
+def counted(daily, metric):
+    """Days that enter averages: eligible nights, complete days, or any day for readings."""
+    if metric == "sleep_min":
+        return daily.sleep_eligible.astype(bool)
+    if metric in READINGS:
+        return daily[metric].notna()
+    return daily.complete.astype(bool)
+
+
+def compact(figure, unit, height=260):
+    figure.update_layout(
+        yaxis_title=unit,
+        xaxis_tickformat="%Y-%m-%d",
+        legend={"orientation": "h", "y": 1.12},
+        margin={"l": 10, "r": 10, "t": 30, "b": 10},
+        height=height,
+    )
+    return figure
+
+
+def daily_figure(daily, metric, start, end, usual, unit, *, bars=False, scale=1.0) -> go.Figure:
+    """Single days faded, the 7-day average bold, the user's usual dashed."""
+    figure = go.Figure()
+    if daily.empty:
+        return compact(figure, unit)
+    daily = daily.sort_values("date_local")
+    values = pd.to_numeric(daily[metric]).where(counted(daily, metric)) * scale
+    visible = ((daily.date_local >= start) & (daily.date_local <= end)).to_numpy()
+    dates = daily.date_local[visible]
+    single = (go.Bar if bars else go.Scatter)(x=dates, y=values[visible], name="single days")
+    if bars:
+        single.update(marker_color=FADED)
+    else:
+        single.update(mode="markers", marker={"color": FADED, "size": 6})
+    figure.add_trace(single)
+    if metric not in READINGS:
+        # Calendar window over the whole history, so the viewport never changes the average.
+        indexed = pd.Series(values.to_numpy(), index=pd.to_datetime(daily.date_local))
+        mean = indexed.rolling("7D", min_periods=4).mean().where(values.notna().to_numpy())
+        figure.add_scatter(
+            x=dates,
+            y=mean.to_numpy()[visible],
+            name="7-day average",
+            line={"color": AVERAGE, "width": 2.4},
+            connectgaps=False,
+        )
+    if usual is not None:
+        figure.add_scatter(
+            x=[start, end],
+            y=[usual * scale] * 2,
+            name="your usual",
+            mode="lines",
+            line={"color": USUAL, "dash": "dash"},
+        )
+    return compact(figure, unit)
+
+
+def stages_figure(nights, usual_min) -> go.Figure:
+    """Stacked recorded stage time per main night, in hours; missing stages stay gaps."""
+    figure = go.Figure()
+    for stage, color in STAGE_COLORS.items():
+        column = nights.get(f"{stage}_min", pd.Series(index=nights.index, dtype=float))
+        figure.add_bar(
+            x=nights.date_local, y=column / 60, name=STAGE_NAMES[stage], marker_color=color
+        )
+    if usual_min is not None and not nights.empty:
+        figure.add_scatter(
+            x=[nights.date_local.min(), nights.date_local.max()],
+            y=[usual_min / 60] * 2,
+            name="your usual",
+            mode="lines",
+            line={"color": USUAL, "dash": "dash"},
+        )
+    figure.update_layout(barmode="stack")
+    return compact(figure, "hours asleep", height=300)
+
+
+def clock_figure(nights) -> go.Figure:
+    """One bar per night from falling asleep to waking, on an axis from 18:00 to 18:00."""
+    onset = (nights.onset_wall_min - 1080) % 1440
+    wake = (nights.wake_wall_min - 1080) % 1440
+    figure = go.Figure(
+        go.Bar(x=nights.date_local, base=onset, y=(wake - onset) % 1440, marker_color=AVERAGE)
+    )
+    figure.update_layout(
+        showlegend=False,
+        yaxis={
+            "tickvals": [0, 360, 720, 1080, 1440],
+            "ticktext": ["18:00", "00:00", "06:00", "12:00", "18:00"],
+            "autorange": "reversed",
+        },
+    )
+    return compact(figure, "local time", height=300)
+
+
+def raw_data(frames: dict[str, pd.DataFrame]) -> None:
+    """The only place for UTC times, offsets and archive column names."""
+    with st.expander("Raw data and sources"):
+        for title, frame in frames.items():
+            summary_table(frame, title)
 
 
 def summary_table(frame: pd.DataFrame, title: str) -> None:

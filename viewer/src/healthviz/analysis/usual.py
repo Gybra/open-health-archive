@@ -9,6 +9,8 @@ import pandas as pd
 USUAL_DAYS = 90
 MIN_DAYS = 30
 MIN_NIGHTS = 20
+# Point readings: counted on any day, compared reading by reading.
+READINGS = ("weight", "spo2")
 
 
 @dataclass(frozen=True)
