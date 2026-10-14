@@ -62,6 +62,71 @@ manifest, rebuild to a NEW output folder and retain the old folder for inspectio
 never silently repair or overwrite it. Do not run concurrent imports to the same
 archive. Store the output privately and back it up.
 
+## Start with one command
+
+`start.sh` (macOS, Linux) and `start.ps1` (Windows) import the newest Health Connect
+export and open the viewer at `http://127.0.0.1:8501`. Docker is the only requirement.
+
+```sh
+./start.sh            # macOS / Linux
+./start.sh --choose   # pick the folders again
+```
+
+```powershell
+powershell -ExecutionPolicy Bypass -File start.ps1 [-Choose]
+```
+
+The first run asks, with the system folder dialog, for the archive folder and for the
+folder where you download Health Connect exports (any folder, e.g. Downloads). On
+Linux without `zenity` or `kdialog` it asks in the terminal. The choices are saved in
+`~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder).
+
+Each run rebuilds the image when the checkout changed (offline it keeps the existing
+image), stops the viewer, imports in a container without network that sees only the
+export folder (read-only), the archive and the private config, then starts the viewer
+offline, read-only, with the persistent local read model in the OS cache folder
+(`~/Library/Caches/OpenHealthArchive/viewer`, `~/.cache/open-health-archive/viewer`
+or `%LOCALAPPDATA%\OpenHealthArchive\viewer`; `HEALTHVIZ_CACHE_DIR` overrides it).
+If the import fails, the viewer still starts with the previous data and its sidebar
+shows why. The Windows script has been parsed and dry-run with PowerShell on Linux,
+not yet run on Windows.
+
+## Import Health Connect's daily export
+
+In Health Connect's settings on the phone, turn on the scheduled daily export to
+Google Drive. Download the newest `Health Connect.zip` into your
+export folder and run the start command, or import by hand:
+
+```sh
+HEALTHVIZ_IMPORT_DIR="/absolute/path/to/Downloads" \
+HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" \
+HEALTHVIZ_CONFIG_DIR="$HOME/.config/healthviz" \
+HEALTHVIZ_CACHE_DIR="$HOME/Library/Caches/OpenHealthArchive/viewer" \
+  docker compose -f compose.yaml -f compose.launcher.yaml run --rm import
+```
+
+Stop the viewer first: never import while consulting. The importer:
+
+- picks the newest zip in the folder that contains `health_connect_export.db`
+  (browser renames such as `Health Connect (1).zip` are fine) and skips one it
+  already imported; your zips are never changed or deleted;
+- imports every app and every type with an archive table under ingest
+  `health_connect` with the app in `source_app`; types without a table (today
+  elevation gained and steps cadence) are counted as "not imported";
+- updates edited records and removes records deleted in Health Connect only inside
+  the period the export covers for that type and app, so Health Connect's automatic
+  deletion of old data, or an app removed from Health Connect, never erases history;
+- stops without touching the archive when the format changed (missing columns, or
+  values implausible enough to suggest a unit change); a new format version with the
+  same columns imports with a "not yet tested" warning;
+- rolls back an interrupted write immediately, or on the next run.
+
+The Xiaomi importer stays available for older history. Both write to the same
+archive; associate the Xiaomi watch and the Health Connect Mi Fitness device once
+with "Same physical device as" and overlaps are never added together. The sidebar
+"Apps" filter shows one, several or all apps; the Xiaomi history and Mi Fitness via
+Health Connect appear together as "Mi Fitness".
+
 ## Consult an archive locally
 
 Keep the archive and personal configuration outside this repository. Google Drive

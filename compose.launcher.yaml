@@ -1,0 +1,53 @@
+# Used by start.sh / start.ps1 with compose.yaml. The import container has no network
+# and sees only the export folder (read-only), the archive and the private config.
+# A fixed project name keeps one viewer container wherever the checkout lives.
+name: open-health-archive
+services:
+  import:
+    image: open-health-archive-viewer
+    profiles: [import]
+    network_mode: none
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command:
+      - healthviz
+      - import
+      - health-connect
+      - /import
+      - --out
+      - /archive
+      - --status
+      - /config/health-connect-import.json
+      - --journal
+      - /config/health-connect-journal
+      - --config
+      - /config/config.toml
+      - --label
+      - ${HEALTHVIZ_IMPORT_LABEL:-}
+    volumes:
+      - type: bind
+        source: ${HEALTHVIZ_IMPORT_DIR:?Choose the Health Connect export folder}
+        target: /import
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HEALTHVIZ_ARCHIVE_DIR:?Choose the archive folder}
+        target: /archive
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HEALTHVIZ_CONFIG_DIR:?Choose the private config folder}
+        target: /config
+        bind:
+          create_host_path: false
+  viewer:
+    command: [healthviz, view, /archive, --config, /config/config.toml, --container, --offline, --cache-dir, /cache]
+    volumes:
+      - type: bind
+        source: ${HEALTHVIZ_CACHE_DIR:?Set a separate private cache directory explicitly}
+        target: /cache
+        bind:
+          create_host_path: false
