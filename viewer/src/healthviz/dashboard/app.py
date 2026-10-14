@@ -43,6 +43,8 @@ def clear_snapshot_context():
         "duplicates",
     ):
         st.session_state.pop(key, None)
+    for key in [k for k in st.session_state if str(k).startswith("overlaps-")]:
+        st.session_state.pop(key, None)
 
 
 PRESETS = {"7d": 7, "30d": 30, "90d": 90, "1y": 365, "All": None, "Custom": None}

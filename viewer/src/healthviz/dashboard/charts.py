@@ -5,6 +5,7 @@ import streamlit as st
 from healthviz.analysis.sources import resolve_rows
 from healthviz.analysis.usual import READINGS
 from healthviz.archive.values import parse_offset
+from healthviz.dashboard.context import per_snapshot
 from healthviz.dashboard.format import difference_text, measured_text
 
 FADED, AVERAGE, USUAL = "#93b4ef", "#1f6feb", "#9ca3af"
@@ -166,21 +167,27 @@ def raw_data(frames: dict[str, pd.DataFrame]) -> None:
 
 
 def overlap_audit(context, metric) -> pd.DataFrame:
-    """Rows of days where several sources report the metric, or one source overlaps itself."""
-    tables = context.tables
-    _, audit = resolve_rows(metric, tables[metric], tables["devices"], context.settings)
-    audit = filtered(audit, context.start, context.end)
-    if audit.empty:
-        return audit
-    sources = (
-        audit[["date_local", "device_id", "ingest", "source_app"]]
-        .drop_duplicates()
-        .groupby("date_local")
-        .size()
-    )
-    return audit.loc[
-        audit.date_local.isin(sources.loc[sources > 1].index) | audit.quality.eq("ambiguous")
-    ]
+    """Rows of days where several sources report the metric, or one source overlaps itself.
+
+    Resolved once per snapshot over the whole archive; a period only filters the result.
+    """
+
+    def compute():
+        tables = context.tables
+        _, audit = resolve_rows(metric, tables[metric], tables["devices"], context.settings)
+        if audit.empty:
+            return audit
+        sources = (
+            audit[["date_local", "device_id", "ingest", "source_app"]]
+            .drop_duplicates()
+            .groupby("date_local")
+            .size()
+        )
+        return audit.loc[
+            audit.date_local.isin(sources.loc[sources > 1].index) | audit.quality.eq("ambiguous")
+        ]
+
+    return filtered(per_snapshot("overlaps-" + metric, compute), context.start, context.end)
 
 
 def show_number(label, result, value_text, change_text, noun=None):

@@ -17,3 +17,13 @@ def test_settings_change_invalidates_overview_context(viewer_app, tmp_path):
         viewer_app.run()
     assert not viewer_app.error
     assert resolve.call_count == 2
+
+
+def test_period_change_reuses_source_overlap_audits(viewer_app):
+    from dashboard_nav import open_page
+
+    open_page(viewer_app, "Heart")
+    with patch("healthviz.dashboard.charts.resolve_rows", wraps=resolve_rows) as resolve:
+        viewer_app.segmented_control(key="preset").set_value("7d").run()
+    assert not viewer_app.error
+    assert resolve.call_count == 0
