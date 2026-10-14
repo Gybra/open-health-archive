@@ -47,7 +47,7 @@ Adapted from the Quality Rules of antirez's DwarfStar (`ds4`): https://github.co
 
 ## open-health-archive constraints
 
-A vendor-neutral archive of personal health data (CSV and GPX files in a folder the user owns, typically synced to Google Drive), the importers that write it and a local viewer that reads it. Three parts: `schema/` (the archive contract and synthetic fixtures), `viewer/` (Python package `healthviz`: vendor importers and the Streamlit viewer) and `android/` (Health Connect exporter, not started yet).
+A vendor-neutral archive of personal health data (CSV and GPX files in a folder the user owns, typically synced to Google Drive), the importers that write it and a local viewer that reads it. Two parts: `schema/` (the archive contract and synthetic fixtures) and `viewer/` (Python package `healthviz`: the importers for Health Connect's daily export and Xiaomi, and the Streamlit viewer).
 
 - The archive schema in `schema/` is the only contract between writers and the viewer. Version it, document every column with its unit, and change it only together with its fixtures and every writer and reader. Writers never apply cross-device priority. Only explicitly flagged vendor resting HR and same-source missing-metric fallback summaries may be precomputed; the viewer computes other summaries and resolves sources at read time.
 - Never commit, log, print or put in fixtures real health data, account or device identifiers (Xiaomi `Uid`, `Sid`, `Did`, `Identifier`, `Alias`), GPS coordinates or profile data. Fixtures are synthetic. Errors reference `file:row` and a reason, never values. Real exports are only read locally by the maintainer, never in CI.

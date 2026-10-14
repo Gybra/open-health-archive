@@ -1,22 +1,100 @@
 # Open Health Archive
 
-A vendor-neutral CSV/GPX archive, a Mi Fitness historical importer, and a local
-Docker desktop viewer. Status: early development. The Android Health Connect exporter
-is not implemented yet.
+Open Health Archive keeps your health history in plain CSV and GPX files in a folder you
+own, imports it from Android's Health Connect and from Xiaomi's Mi Fitness, and shows it
+in a dashboard that runs locally in Docker. Nothing is uploaded. Status: early development.
 
-## Development
+![Overview page of a synthetic demonstration archive](docs/overview.png)
 
-Requires Docker Desktop with Compose. Python and uv stay inside Docker.
+## Why this exists
+
+Health Connect collects health data on Android from many apps (watches, bands, scales,
+the phone itself), but it has no dashboard for looking at that history as a whole. Each
+vendor's app shows only its own data, and when several apps record the same measurement
+the records overlap and have to be reconciled before they can be added up.
+
+The maintainer needed to view older Xiaomi watch history, exported from Mi Fitness, next
+to newer data from Health Connect, without counting the same watch twice. Open Health
+Archive does that: it imports Health Connect's daily export and other providers into one
+vendor-neutral archive, lets you mark two sources as the same physical device, and shows
+sleep, heart, activity, routes and body measurements for one app, several or all of them.
+
+## Try the demo
+
+Requires Docker Desktop with Compose. The viewer reads its settings from a private folder
+that must exist:
 
 ```sh
+mkdir -p "$HOME/.config/healthviz"
+chmod 700 "$HOME/.config/healthviz"
 docker compose build
-docker compose run --rm dev uv run --no-sync pytest
-docker compose run --rm dev uv run --no-sync ruff check .
-docker compose run --rm dev uv run --no-sync ruff format --check .
+docker compose up -d viewer
 ```
 
-Tests run without networking and receive no personal data. The development container
-mounts only this repository and runs as an unprivileged user.
+Open `http://127.0.0.1:8501` to see a small, clearly labeled synthetic archive. To view
+your own data, use the one-command start below.
+
+## Start with one command
+
+`start.sh` (macOS, Linux) imports the newest Health Connect export and opens the viewer
+at `http://127.0.0.1:8501`. Docker is the only requirement.
+
+```sh
+./start.sh            # import the newest export and open the viewer
+./start.sh --choose   # pick the folders again
+```
+
+The first run asks, with the system folder dialog, for the archive folder and for the
+folder where you download Health Connect exports (any folder, e.g. Downloads). On
+Linux without `zenity` or `kdialog` it asks in the terminal. The choices are saved in
+`~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder).
+
+Each run rebuilds the image when the checkout changed (offline it keeps the existing
+image), stops the viewer, imports in a container without network that sees only the
+export folder (read-only), the archive and the private config, then starts the viewer
+read-only, with the persistent local read model in the OS cache folder
+(`~/Library/Caches/OpenHealthArchive/viewer` on macOS,
+`~/.cache/open-health-archive/viewer` on Linux; `HEALTHVIZ_CACHE_DIR` overrides it).
+If the import fails, the viewer still starts with the previous data and its sidebar
+shows why.
+
+## Import Health Connect's daily export
+
+In Health Connect's settings on the phone, turn on the scheduled daily export to
+Google Drive. Download the newest `Health Connect.zip` into your
+export folder and run the start command, or import by hand:
+
+```sh
+HEALTHVIZ_IMPORT_DIR="/absolute/path/to/Downloads" \
+HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" \
+HEALTHVIZ_CONFIG_DIR="$HOME/.config/healthviz" \
+HEALTHVIZ_CACHE_DIR="$HOME/Library/Caches/OpenHealthArchive/viewer" \
+  docker compose -f compose.yaml -f compose.launcher.yaml run --rm import
+```
+
+Stop the viewer first: never import while consulting. The importer:
+
+- picks the newest zip in the folder that contains `health_connect_export.db`
+  (browser renames such as `Health Connect (1).zip` are fine) and skips one it
+  already imported; your zips are never changed or deleted;
+- imports every app and every type with an archive table under ingest
+  `health_connect` with the app in `source_app`; types without a table (today
+  elevation gained and steps cadence) are counted as "not imported";
+- updates edited records and removes records deleted in Health Connect only inside
+  the period the export covers for that type and app, so Health Connect's automatic
+  deletion of old data, or an app removed from Health Connect, never erases history;
+- stops without touching the archive when the format changed (missing columns, or
+  values implausible enough to suggest a unit change); a new format version with the
+  same columns imports with a "not yet tested" warning;
+- rolls back an interrupted write immediately, or on the next run.
+
+The Xiaomi importer stays available for older history. Both write to the same
+archive; associate the Xiaomi watch and the Health Connect Mi Fitness device once
+with "Same physical device as" and overlaps are never added together. The sidebar
+"Apps" filter shows one, several or all apps; the Xiaomi history and Mi Fitness via
+Health Connect appear together as "Mi Fitness".
+
+To support another source, see [docs/adding-an-importer.md](docs/adding-an-importer.md).
 
 ## Import a Mi Fitness export
 
@@ -62,73 +140,6 @@ manifest, rebuild to a NEW output folder and retain the old folder for inspectio
 never silently repair or overwrite it. Do not run concurrent imports to the same
 archive. Store the output privately and back it up.
 
-## Start with one command
-
-`start.sh` (macOS, Linux) and `start.ps1` (Windows) import the newest Health Connect
-export and open the viewer at `http://127.0.0.1:8501`. Docker is the only requirement.
-
-```sh
-./start.sh            # macOS / Linux
-./start.sh --choose   # pick the folders again
-```
-
-```powershell
-powershell -ExecutionPolicy Bypass -File start.ps1 [-Choose]
-```
-
-The first run asks, with the system folder dialog, for the archive folder and for the
-folder where you download Health Connect exports (any folder, e.g. Downloads). On
-Linux without `zenity` or `kdialog` it asks in the terminal. The choices are saved in
-`~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder).
-
-Each run rebuilds the image when the checkout changed (offline it keeps the existing
-image), stops the viewer, imports in a container without network that sees only the
-export folder (read-only), the archive and the private config, then starts the viewer
-read-only, with the persistent local read model in the OS cache folder
-(`~/Library/Caches/OpenHealthArchive/viewer`, `~/.cache/open-health-archive/viewer`
-or `%LOCALAPPDATA%\OpenHealthArchive\viewer`; `HEALTHVIZ_CACHE_DIR` overrides it).
-If the import fails, the viewer still starts with the previous data and its sidebar
-shows why. The Windows script has been parsed and dry-run with PowerShell on Linux,
-not yet run on Windows.
-
-## Import Health Connect's daily export
-
-In Health Connect's settings on the phone, turn on the scheduled daily export to
-Google Drive. Download the newest `Health Connect.zip` into your
-export folder and run the start command, or import by hand:
-
-```sh
-HEALTHVIZ_IMPORT_DIR="/absolute/path/to/Downloads" \
-HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" \
-HEALTHVIZ_CONFIG_DIR="$HOME/.config/healthviz" \
-HEALTHVIZ_CACHE_DIR="$HOME/Library/Caches/OpenHealthArchive/viewer" \
-  docker compose -f compose.yaml -f compose.launcher.yaml run --rm import
-```
-
-Stop the viewer first: never import while consulting. The importer:
-
-- picks the newest zip in the folder that contains `health_connect_export.db`
-  (browser renames such as `Health Connect (1).zip` are fine) and skips one it
-  already imported; your zips are never changed or deleted;
-- imports every app and every type with an archive table under ingest
-  `health_connect` with the app in `source_app`; types without a table (today
-  elevation gained and steps cadence) are counted as "not imported";
-- updates edited records and removes records deleted in Health Connect only inside
-  the period the export covers for that type and app, so Health Connect's automatic
-  deletion of old data, or an app removed from Health Connect, never erases history;
-- stops without touching the archive when the format changed (missing columns, or
-  values implausible enough to suggest a unit change); a new format version with the
-  same columns imports with a "not yet tested" warning;
-- rolls back an interrupted write immediately, or on the next run.
-
-The Xiaomi importer stays available for older history. Both write to the same
-archive; associate the Xiaomi watch and the Health Connect Mi Fitness device once
-with "Same physical device as" and overlaps are never added together. The sidebar
-"Apps" filter shows one, several or all apps; the Xiaomi history and Mi Fitness via
-Health Connect appear together as "Mi Fitness".
-
-To support another source, see [docs/adding-an-importer.md](docs/adding-an-importer.md).
-
 ## Consult an archive locally
 
 Keep the archive and personal configuration outside this repository. Google Drive
@@ -144,10 +155,11 @@ HEALTHVIZ_ARCHIVE_DIR="/absolute/path/to/HealthExport" docker compose up -d view
 
 Open `http://127.0.0.1:8501`. Without `HEALTHVIZ_ARCHIVE_DIR`, the viewer uses the
 clearly labeled synthetic demonstration archive. Set `HEALTHVIZ_CONFIG_DIR` to choose
-another private settings directory. The archive is mounted read-only. In the Linux Docker runtime, validated CSV input
-buffers stay in memory and are released after each bounded batch; no temporary CSV
-cache is written to disk. Settings are saved separately in `config.toml`; source associations must be explicit, never based
-on identical model names. Advanced per-device ingest orders can be edited in the
+another private settings directory. The archive is mounted read-only. In the Linux
+Docker runtime, validated CSV input buffers stay in memory and are released after each
+bounded batch; no temporary CSV cache is written to disk. Settings are saved separately
+in `config.toml`; source associations must be explicit, never based on identical model
+names. Advanced per-device ingest orders can be edited in the
 private TOML `[ingest_priority]` table.
 
 Offline consultation disables all basemap requests:
@@ -174,8 +186,9 @@ consulting; a changing/inconsistent snapshot is rejected rather than silently re
 
 ## Optional persistent local preparation
 
-By default the viewer creates no persistent health-data database. To speed up new
-sessions and process restarts, explicitly enable a disposable DuckDB read model.
+`start.sh` always enables a disposable DuckDB read model in the OS cache folder. With
+the manual Compose commands the viewer creates no persistent health-data database; to
+speed up new sessions and process restarts, enable it explicitly as described here.
 CSV/GPX and the manifest remain canonical; deleting this cache loses no archive data.
 It stores a **second plaintext copy** of raw tables, daily summaries and Overview
 sleep/workout context. It does not store GPX points, map density or observation messages.
@@ -251,11 +264,37 @@ locations: keep archives private and backed up. Online maps request OSM tiles in
 the browser, revealing the viewed area to that provider; `--offline` uses no basemap.
 Streamlit telemetry and remote deployment controls are disabled. A standard-library
 audit hook blocks Python socket connections and outbound DNS before framework
-startup; it is not a sandbox for arbitrary native code. No persistent health-data
-cache is created unless `--cache-dir` is explicitly enabled; the optional read model
-is a separate disposable plaintext copy, not an upload or a replacement archive.
+startup; it is not a sandbox for arbitrary native code. A persistent health-data
+cache is created only with `--cache-dir`, which `start.sh` passes; this read model is
+a separate disposable plaintext copy, not an upload or a replacement archive.
 Keep sync/import jobs stopped while consulting.
 Containers protect original exports
 only when they are mounted read-only; Docker does not encrypt them.
 
 This is not a medical device and provides no diagnosis or medical advice.
+
+## Development
+
+Requires Docker Desktop with Compose. Python and uv stay inside Docker. GitHub Actions
+runs the same checks on every push and pull request.
+
+```sh
+docker compose build
+docker compose run --rm dev uv run --no-sync pytest
+docker compose run --rm dev uv run --no-sync ruff check .
+docker compose run --rm dev uv run --no-sync ruff format --check .
+```
+
+Tests run without networking and receive no personal data. The development container
+mounts only this repository and runs as an unprivileged user.
+
+Read [AGENTS.md](AGENTS.md) before contributing: its rules on privacy, missing data and
+tests apply to every change. To support another source, see
+[docs/adding-an-importer.md](docs/adding-an-importer.md). Report security or privacy
+problems privately as described in [SECURITY.md](SECURITY.md).
+
+## License
+
+MIT, see [LICENSE](LICENSE). Open Health Archive is an independent project, not
+affiliated with or endorsed by Google, Xiaomi or any other vendor. Health Connect,
+Mi Fitness and other product names are trademarks of their owners.
