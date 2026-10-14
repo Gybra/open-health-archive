@@ -90,3 +90,19 @@ def test_nearest_hr_limit_and_elevation_absence(tmp_path):
     assert profile.bpm.iloc[1] == 70
     assert pd.isna(profile.bpm.iloc[2])
     assert profile.elevation_m.isna().all()
+
+
+def test_point_children_match_in_any_namespace_first_one_wins():
+    points = module().parse_track(
+        b'<gpx xmlns="http://www.topografix.com/GPX/1/1" xmlns:x="urn:x"><trk>'
+        b'<trkseg><trkpt lat="1" lon="2"><x:ele>7</x:ele><ele>9</ele>'
+        b"<extensions><time>2026-01-01T05:00:00Z</time></extensions></trkpt>"
+        b'<trkpt lat="3" lon="4"><time>2026-01-01T00:00:01Z</time><x:time>2026-01-02T00:00:00Z'
+        b"</x:time></trkpt></trkseg>"
+        b'<trkseg><trkpt lat="5" lon="6"><ele></ele></trkpt></trkseg></trk></gpx>'
+    )
+    assert points.segment.tolist() == [0, 0, 1]
+    assert points.elevation_m.iloc[0] == 7
+    assert pd.isna(points.elevation_m.iloc[1]) and pd.isna(points.elevation_m.iloc[2])
+    assert pd.isna(points.time.iloc[0])
+    assert points.time.iloc[1] == pd.Timestamp("2026-01-01T00:00:01Z")

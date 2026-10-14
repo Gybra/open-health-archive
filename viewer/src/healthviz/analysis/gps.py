@@ -38,14 +38,18 @@ def parse_track(data: bytes) -> pd.DataFrame:
                     or not -180 <= lon <= 180
                 ):
                     raise ValueError
-                time_node = point.find("{*}time")
+                # One pass over the children, like find("{*}name"): any namespace, first wins.
+                children = {}
+                for child in point:
+                    children.setdefault(child.tag.rpartition("}")[2], child)
+                time_node = children.get("time")
                 time = None
                 if time_node is not None and time_node.text:
                     time = datetime.fromisoformat(time_node.text.replace("Z", "+00:00"))
                     if time.tzinfo is None:
                         raise ValueError
                     time = time.astimezone(UTC)
-                elevation_node = point.find("{*}ele")
+                elevation_node = children.get("ele")
                 elevation = (
                     float(elevation_node.text)
                     if elevation_node is not None and elevation_node.text
