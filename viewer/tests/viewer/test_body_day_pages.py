@@ -49,3 +49,28 @@ def test_workout_detail_opens_its_day(viewer_app):
     next(b for b in viewer_app.button if b.label == "Open this day →").click().run()
     assert viewer_app.session_state["view"] == "Day"
     assert any(s.value == day_text(date(2026, 1, 3)) for s in viewer_app.subheader)
+
+
+def test_back_from_day_restores_the_picked_workout(viewer_app):
+    activity_view(viewer_app, "Workouts")
+    picked = ("synthetic", "workouts")  # the oldest walk, not the default newest
+    viewer_app.selectbox(key="workout").set_value(picked).run()
+    next(b for b in viewer_app.button if b.label == "Open this day →").click().run()
+    next(b for b in viewer_app.button if b.label == "← Back").click().run()
+    assert viewer_app.segmented_control(key="activity_view").value == "Workouts"
+    assert viewer_app.selectbox(key="workout").value == picked
+    assert not viewer_app.exception and not viewer_app.error
+
+
+def test_back_from_day_restores_the_picked_night(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from area_archive import LAST
+
+    root = write_area_archive(tmp_path / "archive")
+    app = open_page(start(monkeypatch, root, tmp_path / "config.toml"), "Sleep")
+    older = LAST - timedelta(days=5)
+    app.selectbox(key="night").set_value(older).run()
+    next(b for b in app.button if b.label == "Open this day →").click().run()
+    next(b for b in app.button if b.label == "← Back").click().run()
+    assert app.selectbox(key="night").value == older

@@ -16,7 +16,7 @@ from healthviz.dashboard.charts import (
     show_number,
     stages_figure,
 )
-from healthviz.dashboard.context import derived, device_names, open_page
+from healthviz.dashboard.context import derived, device_names, open_page, remember, restore
 from healthviz.dashboard.format import clock_text, day_text, minutes_text
 
 
@@ -50,12 +50,14 @@ def selected_night(main, stages):
         st.info("No nights recorded in this period.")
         return
     by_day = main.set_index("date_local")
+    restore("night", by_day.index)
     day = st.selectbox(
         "Night",
         list(by_day.index),
         key="night",
         format_func=lambda d: f"{day_text(d)} · {duration(by_day.loc[d, 'sleep_min'])}",
     )
+    remember("night", day)
     night = by_day.loc[day]
     st.subheader(f"Selected night · {day_text(day)}")
     st.caption(

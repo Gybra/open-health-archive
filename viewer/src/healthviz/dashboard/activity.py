@@ -14,7 +14,7 @@ from healthviz.dashboard.charts import (
     raw_data,
     show_number,
 )
-from healthviz.dashboard.context import derived, open_page
+from healthviz.dashboard.context import derived, open_page, remember, restore
 from healthviz.dashboard.format import count_text, kcal, km, minutes_text
 
 # Daily metric → (label, chart tab, unit, scale, value text).
@@ -61,9 +61,12 @@ def render(context):
     with columns[-1]:
         weekly = compare_weekly_total(daily, "workout_min", start, end)
         show_number("Workout time per week", weekly, minutes_text, minutes_text)
+    views = ["Daily", "Workouts", "Routes"]
+    restore("activity_view", views)
     # Highlight "Daily" until another view is picked.
     st.session_state.setdefault("activity_view", "Daily")
-    view = st.segmented_control("Show", ["Daily", "Workouts", "Routes"], key="activity_view")
+    view = st.segmented_control("Show", views, key="activity_view")
+    remember("activity_view", view)
     if view == "Workouts":
         workouts.render(context)
     elif view == "Routes":

@@ -14,7 +14,7 @@ from healthviz.archive.reader import ArchiveReadError, archive_token
 from healthviz.archive.validate import safe_track_path
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.charts import filtered, overlap_audit, raw_data
-from healthviz.dashboard.context import device_names, open_page
+from healthviz.dashboard.context import device_names, open_page, remember, restore
 from healthviz.dashboard.format import day_text, kcal, km, literal, minutes_text, pace_text
 
 PACED = ("walking", "running", "hiking")
@@ -138,7 +138,9 @@ def pick_workout(workouts):
             f" · {origin}"
         )
 
+    restore("workout", records)
     key = st.selectbox("Workout", list(records), format_func=readable, key="workout")
+    remember("workout", key)
     return pd.Series(records[key])
 
 

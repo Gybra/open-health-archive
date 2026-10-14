@@ -47,6 +47,17 @@ def open_page(name: str, **state) -> None:
     st.session_state.update(state)
 
 
+def restore(key: str, options) -> None:
+    """Bring back a pick Streamlit dropped while its widget was hidden (the Day view)."""
+    saved = st.session_state.get("saved-" + key)
+    if key not in st.session_state and saved is not None and saved in list(options):
+        st.session_state[key] = saved
+
+
+def remember(key: str, value) -> None:
+    st.session_state["saved-" + key] = value
+
+
 def derived(context: PageContext) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Resolved nights and workouts, once per snapshot; the read model fills them up front."""
     key = st.session_state["snapshot"][0]
