@@ -3,6 +3,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
+import streamlit as st
+from dashboard_nav import start
 from viewer_archive import write_viewer_archive
 
 from healthviz.archive.gpx import validate_gpx
@@ -69,6 +71,24 @@ print('blocked')
     )
     assert child.returncode == 0
     assert child.stdout.strip() == "blocked"
+
+
+def test_browser_tab_icon_is_drawn_locally(tmp_path, monkeypatch):
+    # Without its own icon, Streamlit shows the page's Material icon in the browser tab and
+    # the browser downloads it from fonts.gstatic.com, even offline.
+    icons = []
+    original = st.set_page_config
+
+    def set_page_config(**options):
+        icons.append(options.get("page_icon"))
+        return original(**options)
+
+    with patch.object(st, "set_page_config", set_page_config):
+        app = start(monkeypatch, write_viewer_archive(tmp_path / "a"), tmp_path / "c.toml")
+    assert not app.exception
+    assert icons and all(
+        isinstance(icon, str) and icon and not icon.startswith((":", "http")) for icon in icons
+    )
 
 
 def test_config_cannot_be_written_inside_archive(tmp_path):

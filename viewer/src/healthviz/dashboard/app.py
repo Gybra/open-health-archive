@@ -139,7 +139,8 @@ def main():
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--offline", action="store_true")
     args = parser.parse_args()
-    st.set_page_config(page_title="Open Health Archive", layout="wide")
+    # An emoji icon is drawn by the browser; the pages' Material icons would be downloaded.
+    st.set_page_config(page_title="Open Health Archive", page_icon="📊", layout="wide")
     st.set_option("client.showErrorDetails", "none")
     settings = load_settings(args.config)
     archive = args.archive or (Path(settings.archive_dir) if settings.archive_dir else None)
