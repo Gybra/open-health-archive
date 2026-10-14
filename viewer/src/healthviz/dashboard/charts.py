@@ -6,6 +6,8 @@ from healthviz.analysis.usual import READINGS
 from healthviz.archive.values import parse_offset
 
 FADED, AVERAGE, USUAL = "#93b4ef", "#1f6feb", "#9ca3af"
+# Levels (heart rate, weight, SpO₂) are read against their own range; amounts start at zero.
+LEVELS = ("resting_hr", "hr_mean", "hr_min", "hr_max", "weight", "spo2")
 STAGE_COLORS = {"deep": "#1e40af", "light": "#93c5fd", "rem": "#a855f7", "awake": "#fca5a5"}
 STAGE_NAMES = {"deep": "Deep", "light": "Light", "rem": "REM", "awake": "Awake"}
 
@@ -139,6 +141,8 @@ def daily_figure(daily, metric, start, end, usual, unit, *, bars=False, scale=1.
             mode="lines",
             line={"color": USUAL, "dash": "dash"},
         )
+    if metric not in LEVELS:
+        figure.update_yaxes(rangemode="tozero")
     return compact(figure, unit)
 
 

@@ -109,8 +109,10 @@ def section(context, area, numbers):
         st.subheader(area)
         left, right = st.columns([1, 2])
         with left:
-            for number in numbers:
-                show_number(*number)
+            grid = st.columns(2)
+            for index, number in enumerate(numbers):
+                with grid[index % 2]:
+                    show_number(*number)
             st.button(f"{area} details →", on_click=open_page, args=(area,), key="open-" + area)
         with right:
             usual = numbers[0][1].usual

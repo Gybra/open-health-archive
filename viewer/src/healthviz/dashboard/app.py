@@ -163,15 +163,15 @@ def main():
         return
     keep_navigation_state(daily)
     start, end = daily.date_local.min(), daily.date_local.max()
+    view = st.session_state.get("view") if page != "Settings" else None
+    st.header("Day" if view == "Day" else page)
     if page != "Settings":
         period = top_bar(daily, settings, st.session_state["app_choices"], args.config)
         if period is None:
             return
         start, end = period
     context = PageContext(tables, daily, settings, start, end, archive, args.offline, args.config)
-    view = st.session_state.get("view") if page != "Settings" else None
     name = "day" if view == "Day" else PAGES[page]
-    st.header("Day" if view == "Day" else page)
     if page == "Overview" and view is None:
         duplicate_notice(context)
     importlib.import_module("healthviz.dashboard." + name).render(context)

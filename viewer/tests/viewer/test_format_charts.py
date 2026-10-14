@@ -100,3 +100,12 @@ def test_clock_figure_spans_midnight():
     bars = clock_figure(nights()).data[0]
     assert list(bars.base) == [330, 375]  # minutes after 18:00
     assert list(bars.y) == [450, 385]
+
+
+def test_amounts_start_at_zero_and_levels_do_not():
+    frame = daily([1000.0] * 10, [True] * 10)
+    figure = daily_figure(frame, "steps", DAY - timedelta(days=9), DAY, None, "steps")
+    assert figure.layout.yaxis.rangemode == "tozero"
+    frame["weight"] = 70.0
+    figure = daily_figure(frame, "weight", DAY - timedelta(days=9), DAY, None, "kg")
+    assert figure.layout.yaxis.rangemode is None
