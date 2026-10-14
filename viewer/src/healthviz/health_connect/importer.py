@@ -53,13 +53,17 @@ def deletions(archive: Path, mapped: Mapped) -> tuple[dict[str, set], set[str]]:
     for table in sorted(set(mapped.tables) - {"sleep_stages"}):
         incoming = mapped.tables[table]
         column = TABLES[table].time_column
-        covered, kept = windows(incoming, column), {row["record_id"] for row in incoming}
+        covered = windows(incoming, column)
+        kept = {row["record_id"]: row.get("track_file", "") for row in incoming}
         for row in own_rows(archive, table):
             low, high = covered.get(record_type(row), ("~", ""))
-            if row["record_id"] not in kept and low <= row[column] <= high:
+            deleted = row["record_id"] not in kept and low <= row[column] <= high
+            if deleted:
                 delete_keys.setdefault(table, set()).add((INGEST, row["record_id"]))
-                if row.get("track_file"):
-                    tracks.add(row["track_file"])
+            # A deleted workout's route, or one removed from a kept workout, goes too.
+            old_track = row.get("track_file", "")
+            if old_track and (deleted or kept.get(row["record_id"], old_track) != old_track):
+                tracks.add(old_track)
     sessions = {key[1] for key in delete_keys.get("sleep_sessions", ())}
     if sessions:
         delete_keys["sleep_stages"] = {

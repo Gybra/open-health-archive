@@ -321,3 +321,20 @@ def test_unexpected_error_is_reported_in_status(places, monkeypatch):
 
     assert status.error == "unexpected error while importing"
     assert "SECRET" not in (places / "config/status.json").read_text()
+
+
+def test_route_removed_from_a_kept_workout_is_deleted(places):
+    export(places, every_type(), mtime=1_900_000_000)
+    run(places)
+    track = places / "archive" / f"tracks/{uuid_hex(7)}.gpx"
+    assert track.exists()
+    later = every_type()
+    later["exercise_route_table"] = []
+    export(places, later, name="b.zip", mtime=2_000_000_000)
+
+    status = run(places)
+
+    assert status.error is None
+    assert not track.exists()
+    assert [w["track_file"] for w in rows_of(places / "archive", "workouts")] == [""]
+    assert validate_archive(places / "archive") == []
