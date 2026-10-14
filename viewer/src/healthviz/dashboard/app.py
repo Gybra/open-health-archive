@@ -157,10 +157,12 @@ def main():
     snapshot = verify_snapshot(archive)
     key = (snapshot[0], settings)
     cache = st.session_state.get("snapshot")
+    # Every run keeps this slot, so later elements keep their places; otherwise the previous
+    # run's filters stay on screen next to the new ones while the archive opens.
+    notice = st.empty()
     if cache is None or cache[0] != key:
         with st.spinner("Opening the archive…", show_time=True):
             if args.cache_dir is not None:
-                notice = st.empty()
                 built = []
 
                 def building():

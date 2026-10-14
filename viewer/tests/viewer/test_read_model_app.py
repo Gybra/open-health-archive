@@ -120,6 +120,21 @@ def test_settings_and_historical_period_remain_dynamic(prepared_app):
     assert len(app.session_state["snapshot"][2]) > 1, "filter must retain full baseline history"
 
 
+def test_the_page_keeps_its_places_whether_or_not_the_archive_is_reopened(prepared_app):
+    # A shifted page leaves the previous run's filters on screen next to the new ones.
+    app, *_ = prepared_app
+
+    def places(run):
+        return {i: node.type for i, node in run.main.children.items() if node.type != "empty"}
+
+    opened = places(app)
+    again = places(app.run())
+    assert not app.exception and not app.error
+    assert {i: t for i, t in again.items() if t != "caption"} == {
+        i: t for i, t in opened.items() if t != "caption"
+    }
+
+
 def test_only_a_real_build_says_it_is_building(prepared_app):
     app, path, _, _, persistent = prepared_app
     built = [c.value for c in app.caption if c.value.startswith("Local read model rebuilt")]
