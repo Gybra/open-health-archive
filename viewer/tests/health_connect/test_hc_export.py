@@ -125,3 +125,30 @@ def test_children_are_grouped_by_parent(tmp_path):
         )
 
     assert children == {1: [(JAN, 60), (JAN + 60_000, 61)]}
+
+
+def test_callers_errors_are_not_relabelled(tmp_path):
+    zip_path = build_export(tmp_path / "export.zip", {})
+
+    with pytest.raises(KeyError):
+        with open_export(zip_path, tmp_path):
+            raise KeyError("bug in the caller")
+
+
+def test_corrupt_compressed_member_is_reported(tmp_path):
+    plain = build_export(tmp_path / "plain.zip", {"steps_record_table": [steps()]})
+    with zipfile.ZipFile(plain) as source:
+        data = source.read("health_connect_export.db")
+    packed = tmp_path / "packed.zip"
+    with zipfile.ZipFile(packed, "w", zipfile.ZIP_DEFLATED) as target:
+        target.writestr("health_connect_export.db", data)
+    raw = bytearray(packed.read_bytes())
+    middle = len(raw) // 2
+    raw[middle : middle + 64] = bytes(64)
+    packed.write_bytes(bytes(raw))
+    work = tmp_path / "work"
+    work.mkdir()
+
+    with pytest.raises(ExportError, match="^cannot read Health Connect export$"):
+        with open_export(packed, work):
+            pass

@@ -1,6 +1,7 @@
 """Health Connect export rows → archive schema v1 rows, devices and GPX tracks."""
 
 import hashlib
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -29,6 +30,8 @@ BOUNDS = {
     ("calories", "active"): ("kcal", 0, 10_000),
     ("calories", "total"): ("kcal", 0, 20_000),
 }
+# A record whose values cannot be converted is skipped and counted, never fatal.
+CONVERSION_ERRORS = (ValueError, TypeError, OverflowError, OSError)
 # A few typos are dropped; a table this wrong means the stored unit changed.
 STOP_SHARE, STOP_MINIMUM = 0.01, 3
 
@@ -44,6 +47,16 @@ class Mapped:
 class Mapper:
     def __init__(self, export: HealthConnectExport, zone: ZoneInfo):
         self.export, self.zone, self.result = export, zone, Mapped()
+
+    def skip(self, table: str) -> None:
+        self.result.skipped[table] = self.result.skipped.get(table, 0) + 1
+
+    @contextmanager
+    def record(self, table: str):
+        try:
+            yield
+        except CONVERSION_ERRORS:
+            self.skip(table)
 
     def add(self, table: str, **values) -> None:
         row = {column: str(values.get(column, "")) for column in TABLES[table].columns}
@@ -66,31 +79,29 @@ class Mapper:
         )
         return dict(device_id=device_id, ingest=INGEST, source_app=package, record_id=record_id)
 
-    def interval_rows(self, table: str):
+    def interval_rows(self, table: str, target: str):
+        """Records of an export table, already converted; unconvertible ones count for target."""
         for row_id, uid, app_id, device, start, start_offset, end, _, *values in self.export.rows(
             table, REQUIRED[table]
         ):
-            yield (
-                row_id,
-                values,
-                {
+            with self.record(target):
+                fields = {
                     "start_utc": utc_iso(start // 1000),
                     "end_utc": utc_iso(-(-end // 1000)),
                     "utc_offset": self.offset(start, start_offset),
-                    **self.provenance(app_id, device, uid.hex()),
-                },
-            )
+                }
+                yield row_id, values, {**fields, **self.provenance(app_id, device, uid.hex())}
 
-    def instant_rows(self, table: str):
+    def instant_rows(self, table: str, target: str):
         for _, uid, app_id, device, time, offset, *values in self.export.rows(
             table, REQUIRED[table]
         ):
-            fields = {
-                "time_utc": utc_iso(time // 1000),
-                "utc_offset": self.offset(time, offset),
-                **self.provenance(app_id, device, uid.hex()),
-            }
-            yield values, fields
+            with self.record(target):
+                fields = {
+                    "time_utc": utc_iso(time // 1000),
+                    "utc_offset": self.offset(time, offset),
+                }
+                yield values, {**fields, **self.provenance(app_id, device, uid.hex())}
 
 
 def device_kind(package: str, has_device: bool, code: int | None) -> str:
@@ -108,44 +119,50 @@ def map_intervals(m: Mapper) -> None:
         ("active_calories_burned_record_table", "active"),
         ("total_calories_burned_record_table", "total"),
     ):
-        for _, (energy,), fields in m.interval_rows(table):
-            m.add("calories", kind=kind, kcal=number(energy / 1000), **fields)
-    for _, (count,), fields in m.interval_rows("steps_record_table"):
+        for _, (energy,), fields in m.interval_rows(table, "calories"):
+            with m.record("calories"):
+                m.add("calories", kind=kind, kcal=number(energy / 1000), **fields)
+    for _, (count,), fields in m.interval_rows("steps_record_table", "steps"):
         m.add("steps", count=count, **fields)
-    for _, (distance,), fields in m.interval_rows("distance_record_table"):
-        m.add("distance", distance_m=number(float(distance)), **fields)
+    for _, (distance,), fields in m.interval_rows("distance_record_table", "distance"):
+        with m.record("distance"):
+            m.add("distance", distance_m=number(float(distance)), **fields)
 
 
 def map_instants(m: Mapper) -> None:
-    for (percent,), fields in m.instant_rows("oxygen_saturation_record_table"):
-        m.add("spo2", percent=number(float(percent)), **fields)
-    for (grams,), fields in m.instant_rows("weight_record_table"):
-        m.add("weight", kg=number(grams / 1000), **fields)
-    for (bpm,), fields in m.instant_rows("resting_heart_rate_record_table"):
-        date = local_date(fields.pop("time_utc"), fields.pop("utc_offset"))
-        m.add("resting_heart_rate", date_local=date, bpm=bpm, computed_by="vendor", **fields)
+    for (percent,), fields in m.instant_rows("oxygen_saturation_record_table", "spo2"):
+        with m.record("spo2"):
+            m.add("spo2", percent=number(float(percent)), **fields)
+    for (grams,), fields in m.instant_rows("weight_record_table", "weight"):
+        with m.record("weight"):
+            m.add("weight", kg=number(grams / 1000), **fields)
+    for (bpm,), fields in m.instant_rows("resting_heart_rate_record_table", "resting_heart_rate"):
+        with m.record("resting_heart_rate"):
+            date = local_date(fields.pop("time_utc"), fields.pop("utc_offset"))
+            m.add("resting_heart_rate", date_local=date, bpm=bpm, computed_by="vendor", **fields)
 
 
 def map_heart_rate(m: Mapper) -> None:
     samples = m.export.children(
         "heart_rate_record_series_table", "parent_key", ("epoch_millis", "beats_per_minute")
     )
-    for row_id, _, fields in m.interval_rows("heart_rate_record_table"):
+    for row_id, _, fields in m.interval_rows("heart_rate_record_table", "heart_rate"):
         record = fields["record_id"]
         for millis, bpm in samples.get(row_id, []):
-            m.add(
-                "heart_rate",
-                time_utc=utc_iso(millis // 1000),
-                bpm=bpm,
-                **{**fields, "record_id": f"{record}@{millis}"},
-            )
+            with m.record("heart_rate"):
+                m.add(
+                    "heart_rate",
+                    time_utc=utc_iso(millis // 1000),
+                    bpm=bpm,
+                    **{**fields, "record_id": f"{record}@{millis}"},
+                )
 
 
 def map_sleep(m: Mapper) -> None:
     stages = m.export.children(
         "sleep_stages_table", "parent_key", ("stage_start_time", "stage_end_time", "stage_type")
     )
-    for row_id, _, fields in m.interval_rows("sleep_session_record_table"):
+    for row_id, _, fields in m.interval_rows("sleep_session_record_table", "sleep_sessions"):
         session = fields["record_id"]
         own = stages.get(row_id, [])
         has_stages = "true" if own else "false"
@@ -158,16 +175,17 @@ def map_sleep(m: Mapper) -> None:
         )
         provenance = {k: fields[k] for k in ("device_id", "ingest", "source_app")}
         for start, end, code in own:
-            m.add(
-                "sleep_stages",
-                session_id=session,
-                start_utc=utc_iso(start // 1000),
-                end_utc=utc_iso(-(-end // 1000)),
-                stage=archive_stage(code),
-                source_type=stage_name(code),
-                record_id=f"{session}@{start}",
-                **provenance,
-            )
+            with m.record("sleep_stages"):
+                m.add(
+                    "sleep_stages",
+                    session_id=session,
+                    start_utc=utc_iso(start // 1000),
+                    end_utc=utc_iso(-(-end // 1000)),
+                    stage=archive_stage(code),
+                    source_type=stage_name(code),
+                    record_id=f"{session}@{start}",
+                    **provenance,
+                )
 
 
 def map_workouts(m: Mapper) -> None:
@@ -176,19 +194,20 @@ def map_workouts(m: Mapper) -> None:
         "parent_key",
         ("timestamp_millis", "latitude", "longitude", "altitude"),
     )
-    for row_id, (code,), fields in m.interval_rows("exercise_session_record_table"):
-        workout = fields["record_id"]
-        track = f"tracks/{workout}.gpx" if routes.get(row_id) else ""
-        if track:
-            m.result.tracks[track] = route_gpx(routes[row_id])
-        m.add(
-            "workouts",
-            workout_id=workout,
-            type=workout_type(code),
-            source_type=exercise_name(code),
-            track_file=track,
-            **fields,
-        )
+    for row_id, (code,), fields in m.interval_rows("exercise_session_record_table", "workouts"):
+        with m.record("workouts"):
+            workout = fields["record_id"]
+            track = f"tracks/{workout}.gpx" if routes.get(row_id) else ""
+            if track:
+                m.result.tracks[track] = route_gpx(routes[row_id])
+            m.add(
+                "workouts",
+                workout_id=workout,
+                type=workout_type(code),
+                source_type=exercise_name(code),
+                track_file=track,
+                **fields,
+            )
 
 
 def bound_for(table: str, row: Row):
@@ -208,7 +227,7 @@ def drop_unusable(result: Mapped) -> None:
         if implausible >= STOP_MINIMUM and implausible > STOP_SHARE * len(rows):
             raise ExportError(f"implausible {table} values; the export format may have changed")
         if len(kept) < len(rows):
-            result.skipped[table] = len(rows) - len(kept)
+            result.skipped[table] = result.skipped.get(table, 0) + len(rows) - len(kept)
             result.tables[table] = kept
 
 

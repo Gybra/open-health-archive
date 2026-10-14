@@ -184,3 +184,22 @@ def test_notes_and_titles_are_not_exported(tmp_path):
 
     text = repr(result.tables)
     assert "PRIVATE-NOTE" not in text and "PRIVATE-TITLE" not in text
+
+
+def test_unconvertible_records_are_skipped_and_counted(tmp_path):
+    rows = every_type()
+    rows["steps_record_table"] += [
+        interval(40, JAN, JAN + 60_000, offset_s=20 * 3600, count=5),
+        interval(41, JAN, JAN + 60_000, count=None),
+    ]
+    rows["active_calories_burned_record_table"].append(
+        interval(42, JAN, JAN + 60_000, energy=float("nan"))
+    )
+    rows["heart_rate_record_series_table"].append(
+        dict(parent_key=5, beats_per_minute=None, epoch_millis=JAN + 90_000)
+    )
+
+    result = mapped(tmp_path, rows)
+
+    assert result.skipped == {"steps": 2, "calories": 1, "heart_rate": 1}
+    assert len(result.tables["steps"]) == 1 and len(result.tables["heart_rate"]) == 2

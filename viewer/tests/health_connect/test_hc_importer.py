@@ -306,3 +306,18 @@ def test_write_failure_is_rolled_back_at_once(places, monkeypatch):
     assert status.error == "cannot read the export or write the archive"
     assert snapshot(places / "archive") == before
     assert not (places / "config/journal").exists()
+
+
+def test_unexpected_error_is_reported_in_status(places, monkeypatch):
+    from healthviz.health_connect import importer
+
+    def broken(export, zone):
+        raise RuntimeError("SECRET 812")
+
+    export(places, every_type())
+    monkeypatch.setattr(importer, "map_export", broken)
+
+    status = run(places)
+
+    assert status.error == "unexpected error while importing"
+    assert "SECRET" not in (places / "config/status.json").read_text()

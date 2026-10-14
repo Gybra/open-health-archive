@@ -144,6 +144,9 @@ def import_health_connect(
     except OSError:
         result = replace(current, error=WRITE_FAILED)
         recover_now(archive, journal)
+    except Exception:  # the status must always reflect the run, never the error text
+        result = replace(current, error="unexpected error while importing")
+        recover_now(archive, journal)
     try:
         save_status(status, result)
     except OSError:

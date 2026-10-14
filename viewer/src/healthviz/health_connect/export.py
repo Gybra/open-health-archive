@@ -3,6 +3,7 @@
 import re
 import sqlite3
 import zipfile
+import zlib
 from collections.abc import Iterator
 from contextlib import closing, contextmanager
 from pathlib import Path
@@ -125,15 +126,34 @@ class HealthConnectExport:
         return {name: count for name, count in sorted(counts.items()) if count}
 
 
+# zlib, encryption and unsupported-method failures surface as these from zipfile.
+UNREADABLE = (
+    OSError,
+    KeyError,
+    EOFError,
+    RuntimeError,
+    NotImplementedError,
+    zipfile.BadZipFile,
+    zlib.error,
+    sqlite3.Error,
+)
+
+
 @contextmanager
 def open_export(zip_path: Path, workdir: Path) -> Iterator[HealthConnectExport]:
     try:
         database = extract(zip_path, workdir)
         uri = f"{database.resolve().as_uri()}?mode=ro&immutable=1"
-        with closing(sqlite3.connect(uri, uri=True)) as connection:
-            connection.execute("PRAGMA trusted_schema = OFF")
-            yield HealthConnectExport(connection)
+        connection = sqlite3.connect(uri, uri=True)
+        connection.execute("PRAGMA trusted_schema = OFF")
+        export = HealthConnectExport(connection)
     except ExportError:
         raise
-    except (OSError, KeyError, zipfile.BadZipFile, sqlite3.Error):
+    except UNREADABLE:
         raise ExportError("cannot read Health Connect export") from None
+    # Errors raised by the caller's code are its own; only reading SQLite is relabelled.
+    with closing(connection):
+        try:
+            yield export
+        except sqlite3.Error:
+            raise ExportError("cannot read Health Connect export") from None
