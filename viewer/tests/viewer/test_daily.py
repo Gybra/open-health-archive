@@ -80,3 +80,64 @@ def test_same_source_ambiguity_blocks_fallback_and_stats(tmp_path):
 
     assert pd.isna(daily.loc[date(2026, 1, 1), "steps"])
     assert daily.loc[date(2026, 1, 1), "steps_quality"] == "ambiguous"
+
+
+def steps_summary(device, ingest, value="9000"):
+    return fixture_row(
+        "daily_vendor_summaries",
+        date_local="2026-01-01",
+        metric="steps",
+        value=value,
+        unit="count",
+        computed_by="vendor",
+        device_id=device,
+        ingest=ingest,
+        record_id=f"{device}-steps",
+    )
+
+
+def phone_steps(count="47"):
+    return fixture_row(
+        "steps",
+        start_utc="2026-01-01T00:00:00Z",
+        end_utc="2026-01-01T01:00:00Z",
+        utc_offset="+01:00",
+        count=count,
+        device_id="fixture-phone",
+        ingest="health_connect",
+    )
+
+
+def test_lower_priority_raw_does_not_hide_vendor_summary(tmp_path):
+    from datetime import date
+
+    archive = write_viewer_archive(
+        tmp_path,
+        steps=[phone_steps()],
+        daily_vendor_summaries=[steps_summary("fixture-watch", "xiaomi_export")],
+    )
+
+    row = summary(archive).loc[date(2026, 1, 1)]
+
+    assert row.steps == 9000
+    assert row.steps_quality == "vendor fallback"
+
+
+def test_higher_priority_raw_beats_summary(tmp_path):
+    from datetime import date
+
+    archive = write_viewer_archive(
+        tmp_path, daily_vendor_summaries=[steps_summary("fixture-phone", "xiaomi_export")]
+    )
+
+    assert summary(archive).loc[date(2026, 1, 1)].steps == 80
+
+
+def test_same_source_raw_suppresses_its_summary(tmp_path):
+    from datetime import date
+
+    archive = write_viewer_archive(
+        tmp_path, daily_vendor_summaries=[steps_summary("fixture-watch", "synthetic")]
+    )
+
+    assert summary(archive).loc[date(2026, 1, 1)].steps == 80

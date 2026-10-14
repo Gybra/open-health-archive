@@ -177,6 +177,23 @@ def raw_days(frame, metric, settings):
     return days
 
 
+def source_of(record) -> tuple[str, str, str]:
+    return tuple(
+        "" if pd.isna(record[c]) else record[c] for c in ("device_id", "ingest", "source_app")
+    )
+
+
+def raw_sources_by_day(raw, table, settings) -> dict:
+    result = {}
+    if raw.empty:
+        return result
+    frame = raw.assign(source_app=raw.source_app.fillna(""))
+    for source, group in frame.groupby(["device_id", "ingest", "source_app"]):
+        for day in raw_days(group, table, settings):
+            result.setdefault(day, []).append(source)
+    return result
+
+
 def apply_fallback(days, tables, devices, settings):
     summaries = tables["daily_vendor_summaries"]
     for vendor_metric, (metric, unit) in FALLBACK.items():
@@ -190,23 +207,20 @@ def apply_fallback(days, tables, devices, settings):
         raw = tables[table]
         if table == "calories":
             raw = raw.loc[raw.kind == "active"]
-        blocked = raw_days(raw, table, settings)
+        raw_sources = raw_sources_by_day(raw, table, settings)
         candidates = summaries.loc[summaries.metric == vendor_metric]
+
+        def rank(source, metric=vendor_metric):
+            return source_rank(metric, source, devices, settings)
+
         for day, group in candidates.groupby("date_local"):
-            if day in blocked or day not in days:
+            if day not in days:
                 continue
             records = group.to_dict("records")
-            choice = min(
-                records,
-                key=lambda r: source_rank(
-                    vendor_metric,
-                    tuple(
-                        "" if pd.isna(r[c]) else r[c] for c in ("device_id", "ingest", "source_app")
-                    ),
-                    devices,
-                    settings,
-                ),
-            )
+            choice = min(records, key=lambda r: rank(source_of(r)))
+            # Suppression is per source: only better-ranked (or the same) raw data hides it.
+            if any(rank(s) <= rank(source_of(choice)) for s in raw_sources.get(day, ())):
+                continue
             if choice["unit"] != unit:
                 days[day][f"{metric}_quality"] = "invalid fallback unit"
                 continue
