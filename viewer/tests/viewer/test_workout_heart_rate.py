@@ -96,7 +96,7 @@ def reference_max_hr(hr, workouts, as_of):
         )
         if confirmed.any():
             peaks.append(float(bpm.loc[confirmed].max()))
-    return (max(peaks), "observed") if peaks else None
+    return (max(peaks), "observed") if peaks else (None, "unavailable")
 
 
 def test_max_hr_matches_the_boolean_filter(tmp_path):
