@@ -89,3 +89,17 @@ def test_tampered_results_entries_are_never_read(tmp_path, monkeypatch, file):
     with patch.object(rm, "load_archive", wraps=rm.load_archive) as parse:
         load(MI)
     assert parse.call_count == 1
+
+
+def test_only_the_latest_results_are_kept(tmp_path, monkeypatch):
+    load, cache = prepare(tmp_path)
+    monkeypatch.setattr(rm, "MAX_RESULTS", 2)
+    load(Settings())
+    files = []
+    for app in ["Mi Fitness", "Phone (Health Connect)", "Unknown app"]:
+        load(Settings(apps=[app]))
+        files.append(json.loads((cache / "current.json").read_bytes())["derived"][-1]["file"])
+    kept = [e["file"] for e in json.loads((cache / "current.json").read_bytes())["derived"]]
+    assert kept == files[1:]
+    assert sorted(p.name for p in cache.glob("derived-*")) == sorted(files[1:])
+    assert not [k for k in rm.loaded if k[0] == str(cache / files[0])]

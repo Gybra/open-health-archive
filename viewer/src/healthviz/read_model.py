@@ -342,8 +342,10 @@ def point(cache, pointer):
         os.fsync(stream.fileno())
     os.replace(path, cache / "current.json")
     fsync_directory(cache)
+    keep = {pointer["file"], *(e["file"] for e in pointer.get("derived", []))}
+    forget(cache, keep)
     try:
-        cleanup(cache, {pointer["file"], *(e["file"] for e in pointer.get("derived", []))})
+        cleanup(cache, keep)
     except OSError:
         pass  # The new pointer is published; leftovers are retried next publication.
 
