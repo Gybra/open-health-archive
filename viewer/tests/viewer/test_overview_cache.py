@@ -27,3 +27,18 @@ def test_period_change_reuses_source_overlap_audits(viewer_app):
         viewer_app.segmented_control(key="preset").set_value("7d").run()
     assert not viewer_app.error
     assert resolve.call_count == 0
+
+
+def test_workout_rerun_reuses_resolved_workouts_and_max_hr(viewer_app):
+    from dashboard_nav import activity_view
+
+    from healthviz.analysis import heart
+
+    activity_view(viewer_app, "Workouts")
+    with (
+        patch("healthviz.dashboard.workouts.resolve_rows", wraps=resolve_rows) as resolve,
+        patch("healthviz.dashboard.workouts.max_hr", wraps=heart.max_hr) as maximum,
+    ):
+        viewer_app.run()
+    assert not viewer_app.exception and not viewer_app.error
+    assert (resolve.call_count, maximum.call_count) == (0, 0)

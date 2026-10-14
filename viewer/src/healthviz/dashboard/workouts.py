@@ -14,7 +14,14 @@ from healthviz.archive.reader import ArchiveReadError, archive_token
 from healthviz.archive.validate import safe_track_path
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.charts import filtered, overlap_audit, raw_data
-from healthviz.dashboard.context import device_names, open_page, remember, restore
+from healthviz.dashboard.context import (
+    derived,
+    device_names,
+    open_page,
+    per_snapshot,
+    remember,
+    restore,
+)
 from healthviz.dashboard.format import day_text, kcal, km, literal, minutes_text, pace_text
 
 PACED = ("walking", "running", "hiking")
@@ -26,9 +33,7 @@ def type_label(kind) -> str:
 
 def workout_filter(context):
     """Workouts in the period, narrowed by activity type and physical device."""
-    tables, settings = context.tables, context.settings
-    workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
-    workouts = filtered(workouts, context.start, context.end)
+    workouts = filtered(derived(context)[1], context.start, context.end)
     names = device_names(context)
     kinds = sorted(workouts.type.unique())
     devices = sorted(workouts.physical_device_id.unique())
@@ -170,12 +175,11 @@ def heart_rate(context, workout):
     tables, settings = context.tables, context.settings
     hr = resolved_hr(tables, settings)
     samples = hr.loc[(hr.time_utc >= workout.start_utc) & (hr.time_utc < workout.end_utc)]
-    maximum, method = max_hr(
-        settings,
-        hr,
-        resolve_rows("workouts", tables["workouts"], tables["devices"], settings)[0],
-        workout.date_local,
-    )
+    # A year of workouts is scanned per day; keep each day's answer for the snapshot.
+    known = per_snapshot("max_hr", dict)
+    if workout.date_local not in known:
+        known[workout.date_local] = max_hr(settings, hr, derived(context)[1], workout.date_local)
+    maximum, method = known[workout.date_local]
     st.caption(
         f"Max HR method: {method}"
         + (f" · {maximum:.1f} bpm" if maximum else " · profile or confirmed samples needed")
