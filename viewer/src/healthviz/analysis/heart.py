@@ -7,6 +7,15 @@ import pandas as pd
 from healthviz.analysis.sources import resolve_rows
 from healthviz.settings import Settings
 
+NS = "datetime64[ns]"
+
+
+def by_time(frame: pd.DataFrame) -> tuple[np.ndarray, np.ndarray]:
+    """Row positions in time order and their sorted UTC times, as numbers that search fast."""
+    times = frame.time_utc.to_numpy(NS)
+    order = np.argsort(times, kind="stable")
+    return order, times[order]
+
 
 def workout_heart_rate(
     rows: pd.DataFrame, workouts: pd.DataFrame, devices: pd.DataFrame, settings: Settings
@@ -17,10 +26,9 @@ def workout_heart_rate(
     lies within an hour of it; the samples inside get the same winner as a full resolution.
     """
     margin = pd.Timedelta(hours=1)
-    order = np.argsort(rows.time_utc.to_numpy(), kind="stable")
-    times = rows.time_utc.to_numpy()[order]
-    starts = np.searchsorted(times, (workouts.start_utc - margin).to_numpy(), side="left")
-    ends = np.searchsorted(times, (workouts.end_utc + margin).to_numpy(), side="right")
+    order, times = by_time(rows)
+    starts = np.searchsorted(times, (workouts.start_utc - margin).to_numpy(NS), side="left")
+    ends = np.searchsorted(times, (workouts.end_utc + margin).to_numpy(NS), side="right")
     depth = np.zeros(len(rows) + 1, dtype=int)
     np.add.at(depth, starts, 1)
     np.add.at(depth, ends, -1)
@@ -39,11 +47,17 @@ def max_hr(
     lower, upper = pd.Timestamp(start, tz="UTC"), pd.Timestamp(as_of + timedelta(days=1), tz="UTC")
     peaks = []
     if not hr.empty and not workouts.empty:
+        order, times = by_time(hr)
         for workout in workouts.itertuples():
-            samples = hr.loc[
-                (hr.time_utc >= max(lower, workout.start_utc))
-                & (hr.time_utc < min(upper, workout.end_utc))
-            ].sort_values("time_utc")
+            first, last = np.searchsorted(
+                times,
+                [
+                    max(lower, workout.start_utc).to_datetime64(),
+                    min(upper, workout.end_utc).to_datetime64(),
+                ],
+            )
+            # Rows in archive order, as the previous boolean filter returned them.
+            samples = hr.iloc[np.sort(order[first:last])].sort_values("time_utc")
             bpm = samples.bpm
             confirmed = (
                 (bpm - bpm.shift()).abs().le(10)

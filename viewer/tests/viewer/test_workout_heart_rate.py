@@ -68,3 +68,42 @@ def test_a_source_winning_the_hour_after_the_workout_still_counts(tmp_path):
 
     assert inside(full).empty
     assert inside(part).equals(inside(full))
+
+
+def reference_max_hr(hr, workouts, as_of):
+    """The boolean-filter version max_hr replaced; the year window starts on the same date."""
+    import calendar
+    from datetime import timedelta
+
+    import pandas as pd
+
+    start = as_of.replace(
+        year=as_of.year - 1, day=min(as_of.day, calendar.monthrange(as_of.year - 1, as_of.month)[1])
+    )
+    lower, upper = pd.Timestamp(start, tz="UTC"), pd.Timestamp(as_of + timedelta(days=1), tz="UTC")
+    peaks = []
+    for workout in workouts.itertuples():
+        samples = hr.loc[
+            (hr.time_utc >= max(lower, workout.start_utc))
+            & (hr.time_utc < min(upper, workout.end_utc))
+        ].sort_values("time_utc")
+        bpm = samples.bpm
+        confirmed = (
+            (bpm - bpm.shift()).abs().le(10)
+            & (bpm - bpm.shift(-1)).abs().le(10)
+            & samples.time_utc.diff().dt.total_seconds().le(120)
+            & (samples.time_utc.shift(-1) - samples.time_utc).dt.total_seconds().le(120)
+        )
+        if confirmed.any():
+            peaks.append(float(bpm.loc[confirmed].max()))
+    return (max(peaks), "observed") if peaks else None
+
+
+def test_max_hr_matches_the_boolean_filter(tmp_path):
+    generate_archive(tmp_path / "archive", sample_count=45_000)
+    tables = load_archive(tmp_path / "archive")
+    settings = Settings()
+    hr, _ = resolve_rows("heart_rate", tables["heart_rate"], tables["devices"], settings)
+    workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
+    for day in sorted(set(workouts.date_local)):
+        assert max_hr(settings, hr, workouts, day) == reference_max_hr(hr, workouts, day)
