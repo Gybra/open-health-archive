@@ -64,7 +64,7 @@ def test_calendar_charts_have_explicit_iso_axes(viewer_app):
     import json
 
     charts = viewer_app.get("plotly_chart")
-    assert len(charts) >= 6
+    assert len(charts) >= 4
     assert all(
         json.loads(chart.proto.spec)["layout"]["xaxis"].get("tickformat") == "%Y-%m-%d"
         for chart in charts

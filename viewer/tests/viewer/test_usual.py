@@ -123,3 +123,9 @@ def test_changes_pick_largest_relative_differences():
     assert changes({"d": ("Weight", comparison(104, 100, 10), text)}) == [
         "No large changes from your usual"
     ]
+
+
+def test_latest_counted_day_is_reported():
+    frame = daily([1000.0] * 95 + [None] * 5)
+    result = compare_daily(frame, "steps", START + timedelta(days=5), START + timedelta(days=9))
+    assert result.value is None and result.latest == START + timedelta(days=4)

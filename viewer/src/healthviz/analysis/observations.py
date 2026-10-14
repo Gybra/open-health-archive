@@ -47,6 +47,14 @@ def observations(
 ) -> list[str]:
     if daily.empty:
         return []
+    return (
+        heart_observations(daily, as_of)
+        + sleep_observations(daily, sleep, as_of)
+        + activity_observations(daily, workouts, as_of)
+    )
+
+
+def heart_observations(daily: pd.DataFrame, as_of) -> list[str]:
     messages = []
     today = daily.loc[daily.date_local == as_of]
     if not today.empty and today.iloc[0].complete and pd.notna(today.iloc[0].resting_hr):
@@ -60,6 +68,11 @@ def observations(
                     f"{mean:.1f} bpm + 2 SD ({sd:.1f}); {len(prior)} complete days, "
                     "same source and method. Descriptive comparison only."
                 )
+    return messages
+
+
+def sleep_observations(daily: pd.DataFrame, sleep: pd.DataFrame, as_of) -> list[str]:
+    messages = []
     if not sleep.empty:
         nights = sleep.loc[sleep.main & sleep.eligible & (sleep.date_local <= as_of)]
         recent = nights.loc[
@@ -92,7 +105,11 @@ def observations(
                 f"({prior.sleep_min.mean():.0f} min/night, {len(prior)} eligible nights). "
                 "This is not a physiological debt estimate."
             )
-    messages.extend(weekly_observations(daily, as_of))
+    return messages
+
+
+def activity_observations(daily: pd.DataFrame, workouts: pd.DataFrame, as_of) -> list[str]:
+    messages = weekly_observations(daily, as_of)
     if not workouts.empty:
         eligible_days = set(daily.loc[daily.complete, "date_local"])
         eligible = workouts.loc[

@@ -187,6 +187,15 @@ def raw_data(frames: dict[str, pd.DataFrame]) -> None:
             summary_table(frame, title)
 
 
+def notes(messages: list[str]) -> None:
+    """Archive text such as workout types is shown as plain text, never as markdown."""
+    st.subheader("Notes")
+    if not messages:
+        st.caption("Nothing to note against your own history, or not enough history yet.")
+    for message in messages:
+        st.text(message, width="stretch")
+
+
 def summary_table(frame: pd.DataFrame, title: str) -> None:
     st.subheader(title)
     st.dataframe(

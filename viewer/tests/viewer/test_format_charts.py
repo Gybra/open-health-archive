@@ -43,6 +43,8 @@ def test_difference_and_measured_text():
     assert measured_text(lower, "nights") == "27 of 30 nights measured"
     readings = Comparison(80.1, 80.5, 0.4, 4, 30, True, DAY)
     assert measured_text(readings, "readings") == "4 days with readings · latest Tue 2026-10-13"
+    gap = Comparison(None, 400, 30, 0, 30, True, DAY)
+    assert measured_text(gap, "nights") == "no data in this period · last Tue 2026-10-13"
     none = Comparison(None, None, None, 0, 30, False, DAY)
     assert measured_text(none, "readings") == "no readings in this period · latest Tue 2026-10-13"
 

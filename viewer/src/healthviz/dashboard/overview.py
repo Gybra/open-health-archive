@@ -1,37 +1,143 @@
+"""Overview by area: key numbers against the user's usual, one chart per area."""
+
 import streamlit as st
 
-from healthviz.analysis.daily import period_summary
-from healthviz.analysis.observations import observations
-from healthviz.dashboard.charts import calendar_bars, filtered, show_trend, summary_table
-from healthviz.dashboard.context import derived
+from healthviz.analysis.usual import (
+    changes,
+    compare_daily,
+    compare_nights,
+    compare_readings,
+    compare_weekly_total,
+)
+from healthviz.dashboard.charts import daily_figure, filtered, raw_data
+from healthviz.dashboard.context import derived, open_page
+from healthviz.dashboard.format import (
+    clock_text,
+    count_text,
+    difference_text,
+    measured_text,
+    minutes_text,
+)
+
+
+def bpm(value):
+    return f"{value:.0f} bpm"
+
+
+def kcal(value):
+    return f"{count_text(value)} kcal"
+
+
+def km(metres):
+    return f"{metres / 1000:.1f} km"
+
+
+def kg(value):
+    return f"{value:.1f} kg"
+
+
+def percent(value):
+    return f"{value:.1f} %"
+
+
+def readings(daily, metric, start, end):
+    """One resolved value per day with readings (sources already chosen by priority)."""
+    frame = daily[["date_local", metric]].dropna().rename(columns={metric: "value"})
+    return compare_readings(frame, start, end)
+
+
+def key_numbers(context, nights):
+    """Area → (label, comparison, value text, difference text, measured noun)."""
+    daily, start, end = context.daily, context.start, context.end
+
+    def night(column, **options):
+        return compare_nights(nights, column, start, end, **options)
+
+    def day(metric):
+        return compare_daily(daily, metric, start, end)
+
+    return {
+        "Sleep": [
+            ("Asleep per night", night("sleep_min"), minutes_text, minutes_text, "nights"),
+            ("Deep sleep", night("deep_min"), minutes_text, minutes_text, "nights"),
+            ("REM sleep", night("rem_min"), minutes_text, minutes_text, "nights"),
+            ("Bedtime", night("onset_wall_min", clock=True), clock_text, minutes_text, "nights"),
+        ],
+        "Heart": [
+            ("Resting heart rate", day("resting_hr"), bpm, bpm, "days"),
+            ("Blood oxygen", readings(daily, "spo2", start, end), percent, percent, "readings"),
+        ],
+        "Activity": [
+            ("Steps per day", day("steps"), count_text, count_text, "days"),
+            ("Active energy per day", day("active_kcal"), kcal, kcal, "days"),
+            ("Distance per day", day("distance"), km, km, "days"),
+            (
+                "Workout time per week",
+                compare_weekly_total(daily, "workout_min", start, end),
+                minutes_text,
+                minutes_text,
+                "days",
+            ),
+        ],
+        "Body": [("Weight", readings(daily, "weight", start, end), kg, kg, "readings")],
+    }
+
+
+# Area → (daily metric, unit, scale, bars) for the chart beside the key numbers.
+CHARTS = {
+    "Sleep": ("sleep_min", "hours", 1 / 60, False),
+    "Heart": ("resting_hr", "bpm", 1, False),
+    "Activity": ("steps", "steps", 1, True),
+    "Body": ("weight", "kg", 1, False),
+}
+
+
+def show_number(label, result, value_text, change_text, noun):
+    st.metric(
+        label,
+        "—" if result.value is None else value_text(result.value),
+        delta=difference_text(result, change_text) or None,
+        delta_color="off",
+        delta_arrow="off",
+    )
+    st.caption(measured_text(result, noun))
+
+
+def section(context, area, numbers):
+    metric, unit, scale, bars = CHARTS[area]
+    with st.container(border=True):
+        st.subheader(area)
+        left, right = st.columns([1, 2])
+        with left:
+            for number in numbers:
+                show_number(*number)
+            st.button(f"{area} details →", on_click=open_page, args=(area,), key="open-" + area)
+        with right:
+            usual = numbers[0][1].usual
+            figure = daily_figure(
+                context.daily,
+                metric,
+                context.start,
+                context.end,
+                usual,
+                unit,
+                bars=bars,
+                scale=scale,
+            )
+            st.plotly_chart(figure, width="stretch", key="overview-" + area)
 
 
 def render(context):
-    daily, start, end = context.daily, context.start, context.end
-    frame = filtered(daily, start, end)
-    for metric, title, unit in [
-        ("resting_hr", "Resting heart rate", "bpm"),
-        ("sleep_min", "Main sleep duration", "min"),
-        ("steps", "Daily steps", "count"),
-        ("active_kcal", "Active calories", "kcal"),
-    ]:
-        show_trend(daily, metric, title, unit, start=start, end=end)
-    weeks = period_summary(frame, "week")
-    calendar_bars(weeks.set_index("period")[["workout_min"]], "Weekly workout minutes", "min")
-    st.caption(
-        "Workout minutes use recorded active duration where available, otherwise "
-        "elapsed UTC endpoints; overnight allocation is proportional."
-    )
-    calendar_bars(
-        frame.set_index("date_local")[["worn_hours"]],
-        "Coverage · local hours with HR samples",
-        "hours with samples",
-    )
-    sleep, workouts = derived(context)
-    st.subheader("Personal-baseline observations")
-    messages = observations(daily, sleep, workouts, end)
-    if not messages:
-        st.info("Not enough eligible history for a baseline comparison, or no observations.")
-    for message in messages:
-        st.text(message, width="stretch")
-    summary_table(frame, "Daily overview")
+    nights, _ = derived(context)
+    numbers = key_numbers(context, nights)
+    # Bedtime has no above/below; it stays out of the banner.
+    candidates = {
+        label: (label, result, change_text)
+        for area in numbers.values()
+        for label, result, _, change_text, _ in area
+        if label != "Bedtime"
+    }
+    st.info("What changed  \n" + "  \n".join(f"- {line}" for line in changes(candidates)))
+    for area, area_numbers in numbers.items():
+        section(context, area, area_numbers)
+    raw_data({"Daily overview": filtered(context.daily, context.start, context.end)})

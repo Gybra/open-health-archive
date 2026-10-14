@@ -55,3 +55,14 @@ def test_weekly_reduction_and_records():
     assert mod.reduced_week(69, [100] * 4) is True
     assert mod.reduced_week(0, [0] * 4) is False
     assert mod.reduced_week(20, [100] * 3) is False
+
+
+def test_area_observations_partition_messages():
+    mod = module()
+    frame = daily([50] * 15 + [70])
+    as_of = date(2026, 1, 16)
+    heart = mod.heart_observations(frame, as_of)
+    assert heart
+    assert mod.sleep_observations(frame, pd.DataFrame(), as_of) == []
+    assert mod.activity_observations(frame, pd.DataFrame(), as_of) == []
+    assert mod.observations(frame, pd.DataFrame(), pd.DataFrame(), as_of) == heart

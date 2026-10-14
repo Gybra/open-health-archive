@@ -48,6 +48,8 @@ def difference_text(result: Comparison, text) -> str:
 
 def measured_text(result: Comparison, noun: str) -> str:
     if noun != "readings":
+        if not result.counted and result.latest:
+            return f"no data in this period · last {day_text(result.latest)}"
         return f"{result.counted} of {result.total} {noun} measured"
     latest = f" · latest {day_text(result.latest)}" if result.latest else ""
     if not result.counted:

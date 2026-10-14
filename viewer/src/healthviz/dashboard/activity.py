@@ -1,9 +1,11 @@
 import streamlit as st
 
 from healthviz.analysis.daily import period_summary
+from healthviz.analysis.observations import activity_observations
 from healthviz.analysis.sources import resolve_rows
 from healthviz.dashboard import maps, workouts
-from healthviz.dashboard.charts import filtered, show_trend, summary_table
+from healthviz.dashboard.charts import filtered, notes, show_trend, summary_table
+from healthviz.dashboard.context import derived
 
 
 def daily_view(context):
@@ -26,6 +28,7 @@ def daily_view(context):
         "Active and total calories are different measures, never added. Workouts are "
         "not added to daily calories; no calorie balance is computed."
     )
+    notes(activity_observations(daily, derived(context)[1], end))
     summary_table(period_summary(frame, "week"), "Activity weekly totals")
     done, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
     done = filtered(done, start, end)

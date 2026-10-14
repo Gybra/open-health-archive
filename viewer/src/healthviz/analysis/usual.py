@@ -1,7 +1,7 @@
 """Period values against the user's usual: the same statistic over the 90 days before."""
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import date, timedelta
 
 import pandas as pd
@@ -48,6 +48,7 @@ def windows(dates: pd.Series, start: date, end: date):
 def compare(values: pd.Series, dates: pd.Series, start, end, minimum) -> Comparison:
     period, before = windows(dates, start, end)
     now, usual = values.loc[period].dropna(), values.loc[before].dropna()
+    known = dates.loc[values.notna() & (dates <= end)]
     return Comparison(
         mean(now),
         mean(usual),
@@ -55,6 +56,7 @@ def compare(values: pd.Series, dates: pd.Series, start, end, minimum) -> Compari
         len(now),
         (end - start).days + 1,
         len(usual) >= minimum,
+        known.max() if len(known) else None,
     )
 
 
@@ -101,9 +103,7 @@ def compare_weekly_total(daily: pd.DataFrame, metric: str, start: date, end: dat
 
 def compare_readings(readings: pd.DataFrame, start: date, end: date) -> Comparison:
     """Point readings (weight, SpO₂) count on any day: wearing the watch is irrelevant."""
-    result = compare(readings.value, readings.date_local, start, end, 1)
-    earlier = readings.date_local.loc[readings.date_local <= end]
-    return replace(result, latest=earlier.max() if len(earlier) else None)
+    return compare(readings.value, readings.date_local, start, end, 1)
 
 
 def changes(comparisons: dict[str, tuple[str, Comparison, Callable[[float], str]]]) -> list[str]:
