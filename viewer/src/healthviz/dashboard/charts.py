@@ -148,6 +148,48 @@ def daily_figure(daily, metric, start, end, usual, unit, *, bars=False, scale=1.
     return compact(figure, unit)
 
 
+def range_figure(daily, start, end) -> go.Figure:
+    """Lowest to highest heart rate per complete day as a band, the daily mean as a line."""
+    daily = filtered(daily, start, end).sort_values("date_local")
+    complete = daily.complete.astype(bool)
+    figure = go.Figure()
+    for column, name, fill in [("hr_min", "lowest", None), ("hr_max", "highest", "tonexty")]:
+        figure.add_scatter(
+            x=daily.date_local,
+            y=pd.to_numeric(daily[column]).where(complete),
+            name=name,
+            mode="lines",
+            line={"color": FADED, "width": 1},
+            fill=fill,
+            connectgaps=False,
+        )
+    figure.add_scatter(
+        x=daily.date_local,
+        y=pd.to_numeric(daily.hr_mean).where(complete),
+        name="daily average",
+        line={"color": AVERAGE, "width": 2.4},
+        connectgaps=False,
+    )
+    return compact(figure, "bpm")
+
+
+def coverage_figure(daily, start, end, threshold) -> go.Figure:
+    """Hours with heart-rate samples per day; a day counts as complete from the threshold up."""
+    daily = filtered(daily, start, end).sort_values("date_local")
+    figure = go.Figure(
+        go.Bar(x=daily.date_local, y=daily.worn_hours, name="hours measured", marker_color=FADED)
+    )
+    figure.add_scatter(
+        x=[start, end],
+        y=[threshold] * 2,
+        name="complete day",
+        mode="lines",
+        line={"color": USUAL, "dash": "dash"},
+    )
+    figure.update_yaxes(range=[0, 24])
+    return compact(figure, "hours")
+
+
 def stages_figure(nights, usual_min) -> go.Figure:
     """Stacked recorded stage time per main night, in hours; missing stages stay gaps."""
     figure = go.Figure()

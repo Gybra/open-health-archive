@@ -106,6 +106,12 @@ def compare_readings(readings: pd.DataFrame, start: date, end: date) -> Comparis
     return compare(readings.value, readings.date_local, start, end, 1)
 
 
+def compare_point_readings(daily: pd.DataFrame, metric: str, start: date, end: date) -> Comparison:
+    """Weight or SpO₂ from the daily frame: one priority-resolved value per day with readings."""
+    frame = daily[["date_local", metric]].dropna().rename(columns={metric: "value"})
+    return compare_readings(frame, start, end)
+
+
 def changes(comparisons: dict[str, tuple[str, Comparison, Callable[[float], str]]]) -> list[str]:
     """Up to three key numbers at least half a usual spread away, largest relative change first."""
     found = []

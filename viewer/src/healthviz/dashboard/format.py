@@ -63,3 +63,23 @@ def stamp_text(iso_utc: str | None, timezone: str) -> str:
         return f"{pd.Timestamp(iso_utc).tz_convert(ZoneInfo(timezone)):%Y-%m-%d %H:%M}"
     except (TypeError, ValueError, ZoneInfoNotFoundError):
         return str(iso_utc)
+
+
+def bpm(value):
+    return f"{value:.0f} bpm"
+
+
+def kcal(value):
+    return f"{count_text(value)} kcal"
+
+
+def km(metres):
+    return f"{metres / 1000:.1f} km"
+
+
+def kg(value):
+    return f"{value:.1f} kg"
+
+
+def percent(value):
+    return f"{value:.1f} %"

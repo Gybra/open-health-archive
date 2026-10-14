@@ -6,42 +6,21 @@ from healthviz.analysis.usual import (
     changes,
     compare_daily,
     compare_nights,
-    compare_readings,
+    compare_point_readings,
     compare_weekly_total,
 )
 from healthviz.dashboard.charts import daily_figure, filtered, raw_data, show_number
 from healthviz.dashboard.context import derived, open_page
 from healthviz.dashboard.format import (
+    bpm,
     clock_text,
     count_text,
+    kcal,
+    kg,
+    km,
     minutes_text,
+    percent,
 )
-
-
-def bpm(value):
-    return f"{value:.0f} bpm"
-
-
-def kcal(value):
-    return f"{count_text(value)} kcal"
-
-
-def km(metres):
-    return f"{metres / 1000:.1f} km"
-
-
-def kg(value):
-    return f"{value:.1f} kg"
-
-
-def percent(value):
-    return f"{value:.1f} %"
-
-
-def readings(daily, metric, start, end):
-    """One resolved value per day with readings (sources already chosen by priority)."""
-    frame = daily[["date_local", metric]].dropna().rename(columns={metric: "value"})
-    return compare_readings(frame, start, end)
 
 
 def key_numbers(context, nights):
@@ -63,7 +42,13 @@ def key_numbers(context, nights):
         ],
         "Heart": [
             ("Resting heart rate", day("resting_hr"), bpm, bpm, "days"),
-            ("Blood oxygen", readings(daily, "spo2", start, end), percent, percent, "readings"),
+            (
+                "Blood oxygen",
+                compare_point_readings(daily, "spo2", start, end),
+                percent,
+                percent,
+                "readings",
+            ),
         ],
         "Activity": [
             ("Steps per day", day("steps"), count_text, count_text, "days"),
@@ -77,7 +62,9 @@ def key_numbers(context, nights):
                 "days",
             ),
         ],
-        "Body": [("Weight", readings(daily, "weight", start, end), kg, kg, "readings")],
+        "Body": [
+            ("Weight", compare_point_readings(daily, "weight", start, end), kg, kg, "readings")
+        ],
     }
 
 
