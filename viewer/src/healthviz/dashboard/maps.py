@@ -4,14 +4,14 @@ import pandas as pd
 import streamlit as st
 
 from healthviz.analysis.gps import map_deck, route_segments
-from healthviz.dashboard.charts import summary_table
-from healthviz.dashboard.workouts import cached_tracks, workout_filter
+from healthviz.dashboard.charts import raw_data
+from healthviz.dashboard.format import minutes_text
+from healthviz.dashboard.workouts import cached_tracks, type_label, workout_filter
 
 
 def render(context):
-    tables, settings, archive = context.tables, context.settings, context.archive
-    start, end, offline = context.start, context.end, context.offline
-    workouts = workout_filter(tables, settings, start, end)
+    archive, offline = context.archive, context.offline
+    workouts = workout_filter(context)
     reliable = workouts.loc[workouts.quality != "ambiguous"].copy()
     if len(reliable) != len(workouts):
         st.info(
@@ -50,17 +50,35 @@ def render(context):
     reliable["recorded_minutes"] = (
         reliable.duration_s.fillna((reliable.end_utc - reliable.start_utc).dt.total_seconds()) / 60
     )
+    st.subheader("Totals by type")
+    totals = reliable.groupby("type").agg(
+        workouts=("type", "size"),
+        distance=("distance_km", lambda v: v.sum(min_count=1)),
+        minutes=("recorded_minutes", "sum"),
+    )
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Type": totals.index.map(type_label),
+                "Workouts": totals.workouts,
+                "Distance": totals.distance.map(lambda v: "" if pd.isna(v) else f"{v:.1f} km"),
+                "Time": totals.minutes.map(minutes_text),
+            }
+        ),
+        hide_index=True,
+    )
+    frames = {}
     for period in ("week", "month"):
         reliable["period"] = reliable.date_local.map(
             lambda d, period=period: (
                 d - timedelta(days=d.weekday()) if period == "week" else d.replace(day=1)
             )
         )
-        totals = (
+        frames[f"Route {period} totals by type"] = (
             reliable.groupby(["period", "type"])[
                 ["distance_km", "recorded_minutes", "ascent_m", "descent_m"]
             ]
             .sum(min_count=1)
             .reset_index()
         )
-        summary_table(totals, f"Route {period} totals by type")
+    raw_data(frames)

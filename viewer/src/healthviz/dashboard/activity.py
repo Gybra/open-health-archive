@@ -1,49 +1,70 @@
+"""Activity detail: daily movement, workouts one by one, and where the routes went."""
+
 import streamlit as st
 
 from healthviz.analysis.daily import period_summary
 from healthviz.analysis.observations import activity_observations
-from healthviz.analysis.sources import resolve_rows
+from healthviz.analysis.usual import compare_daily, compare_weekly_total
 from healthviz.dashboard import maps, workouts
-from healthviz.dashboard.charts import filtered, notes, show_trend, summary_table
-from healthviz.dashboard.context import derived
+from healthviz.dashboard.charts import (
+    daily_figure,
+    filtered,
+    notes,
+    overlap_audit,
+    raw_data,
+    show_number,
+)
+from healthviz.dashboard.context import derived, open_page
+from healthviz.dashboard.format import count_text, kcal, km, minutes_text
+
+# Daily metric → (label, chart tab, unit, scale, value text).
+DAILY = {
+    "steps": ("Steps per day", "Steps", "steps", 1, count_text),
+    "distance": ("Distance per day", "Distance", "km", 1 / 1000, km),
+    "active_kcal": ("Active energy per day", "Active energy", "kcal", 1, kcal),
+    "total_kcal": ("Total energy per day", "Total energy", "kcal", 1, kcal),
+}
 
 
-def daily_view(context):
-    tables, daily, settings, start, end = (
-        context.tables,
-        context.daily,
-        context.settings,
-        context.start,
-        context.end,
-    )
-    frame = filtered(daily, start, end)
-    for metric, title, unit in [
-        ("steps", "Daily steps", "count"),
-        ("distance", "Daily distance", "m"),
-        ("active_kcal", "Active calories", "kcal"),
-        ("total_kcal", "Total calories", "kcal"),
-    ]:
-        show_trend(daily, metric, title, unit, start=start, end=end)
+def daily_view(context, results):
+    daily, start, end = context.daily, context.start, context.end
+    tabs = st.tabs([tab for _, tab, _, _, _ in DAILY.values()])
+    for tab, (metric, (_, _, unit, scale, _)) in zip(tabs, DAILY.items(), strict=True):
+        with tab:
+            figure = daily_figure(
+                daily, metric, start, end, results[metric].usual, unit, bars=True, scale=scale
+            )
+            st.plotly_chart(figure, width="stretch", key="activity-" + metric)
     st.caption(
-        "Active and total calories are different measures, never added. Workouts are "
-        "not added to daily calories; no calorie balance is computed."
+        "Active and total energy are different measures, never added. Workouts are not "
+        "added to daily energy; no calorie balance is computed."
     )
     notes(activity_observations(daily, derived(context)[1], end))
-    summary_table(period_summary(frame, "week"), "Activity weekly totals")
-    done, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
-    done = filtered(done, start, end)
-    duration = done.duration_s.fillna((done.end_utc - done.start_utc).dt.total_seconds())
-    done["kcal_per_min"] = done.active_kcal / (duration.where(duration > 0) / 60)
-    summary_table(done, "Workout calories")
-    summary_table(
-        done.groupby("type")[["active_kcal", "total_kcal", "kcal_per_min"]].mean().reset_index(),
-        "Workout calories by type",
+    raw_data(
+        {
+            "Activity weekly totals": period_summary(filtered(daily, start, end), "week"),
+            "Steps source overlaps": overlap_audit(context, "steps"),
+            "Distance source overlaps": overlap_audit(context, "distance"),
+            "Calories source overlaps": overlap_audit(context, "calories"),
+        }
     )
-
-
-VIEWS = {"Daily": daily_view, "Workouts": workouts.render, "Routes": maps.render}
 
 
 def render(context):
-    view = st.segmented_control("Show", list(VIEWS), key="activity_view") or "Daily"
-    VIEWS[view](context)
+    daily, start, end = context.daily, context.start, context.end
+    st.button("← Overview", on_click=open_page, args=("Overview",))
+    results = {metric: compare_daily(daily, metric, start, end) for metric in DAILY}
+    columns = st.columns(len(DAILY) + 1)
+    for column, (metric, (label, _, _, _, text)) in zip(columns, DAILY.items(), strict=False):
+        with column:
+            show_number(label, results[metric], text, text, "days")
+    with columns[-1]:
+        weekly = compare_weekly_total(daily, "workout_min", start, end)
+        show_number("Workout time per week", weekly, minutes_text, minutes_text)
+    view = st.segmented_control("Show", ["Daily", "Workouts", "Routes"], key="activity_view")
+    if view == "Workouts":
+        workouts.render(context)
+    elif view == "Routes":
+        maps.render(context)
+    else:
+        daily_view(context, results)

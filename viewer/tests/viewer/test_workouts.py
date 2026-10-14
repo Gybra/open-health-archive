@@ -15,8 +15,7 @@ def test_no_gps_no_elevation_no_profile(viewer_app):
     assert importlib.util.find_spec("healthviz.dashboard.workouts"), "workout page is missing"
     activity_view(viewer_app, "Workouts")
     assert not viewer_app.error
-    widget = next(w for w in viewer_app.selectbox if w.label == "Workout")
-    widget.select_index(0).run()
+    viewer_app.selectbox(key="workout").set_value(("synthetic", "gym")).run()
     assert not viewer_app.error
     assert any("No GPS" in x.value for x in viewer_app.info)
 
