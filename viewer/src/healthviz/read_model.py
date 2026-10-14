@@ -24,6 +24,7 @@ from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import resolve_rows
 from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
 from healthviz.archive.validate import file_checksum
+from healthviz.server import deny_network
 from healthviz.settings import Settings, load_settings
 
 
@@ -444,7 +445,9 @@ def prepare_choices(root: Path, cache: Path, config: Path) -> None:
                 continue
         frames = derive({k: v.copy(deep=False) for k, v in tables.items()}, chosen)
         with locked(cache, exclusive=True):
-            if verify_snapshot(root) != snapshot:
+            if verify_snapshot(root) != snapshot or not same_except_apps(
+                load_settings(config), settings
+            ):
                 return
             latest, done = lookup(cache, derived_key)
             if latest is None or latest[0]["file"] != found[0]["file"]:
@@ -457,17 +460,23 @@ def precompute(root: Path, cache: Path, config: Path) -> None:
     """Prepare other app choices in a low-priority process, one run per cache at a time."""
     os.umask(0o077)
     os.nice(10)
-    fd = os.open(cache / ".precompute.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
-    with os.fdopen(fd, "r+b") as lock:
-        private_path(cache / ".precompute.lock")
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            return
-        try:
+    try:
+        fd = os.open(cache / ".precompute.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+        with os.fdopen(fd, "r+b") as lock:
+            private_path(cache / ".precompute.lock")
+            # Wait for a stale run: it stops at its next check, then this one takes over.
+            fcntl.flock(lock, fcntl.LOCK_EX)
             prepare_choices(root, cache, config)
-        except (OSError, ValueError, KeyError, TypeError, duckdb.Error, ArchiveReadError):
-            return  # Only a head start: the viewer builds any missing choice when it is picked.
+    except (Exception, KeyboardInterrupt):
+        # Only a head start, and error text can carry archive values: stop without a trace.
+        # The viewer builds any missing choice when it is picked.
+        return
+
+
+def background(root: Path, cache: Path, config: Path) -> None:
+    # A spawned interpreter does not inherit the server's network audit hook.
+    sys.addaudithook(deny_network)
+    precompute(root, cache, config)
 
 
 # Background runs already started by this viewer process, by data and settings other than apps.
@@ -483,8 +492,11 @@ def start_precompute(root: Path, cache: Path, config: Path, content_digest: str,
     multiprocessing.active_children()  # reap finished runs
     # spawn, not fork: the server process already runs threads.
     process = multiprocessing.get_context("spawn").Process(
-        target=precompute, args=(root, cache, config), daemon=True
+        target=background, args=(root, cache, config), daemon=True
     )
-    process.start()
     started[key] = process
+    try:
+        process.start()
+    except OSError:
+        return None  # Only a head start: the viewer works without it.
     return process

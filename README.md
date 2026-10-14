@@ -223,10 +223,12 @@ and new tabs, while the file and its pointer are unchanged. This is not a promis
 a particular speedup. Changed sources/code invalidate preparation; settings or
 analysis-only changes reuse validated raw tables and store their results in a small
 separate file, so returning to an earlier Apps choice is a hit (at most 64 are kept).
-After a preparation, a low-priority background process prepares the other Apps
-choices: every combination up to six apps, otherwise each app alone. It uses CPU for
-a while after each import and about one extra results file per choice; it stops if
-the archive or non-Apps settings change. Period filters and historical end dates
+Each viewer process, and each change of data or non-Apps settings, starts a
+low-priority background process that prepares the other Apps choices: every
+combination up to six apps, otherwise each app alone. While it runs it uses CPU and
+holds a second in-memory copy of the archive tables; it keeps about one extra results
+file per choice. When the archive or non-Apps settings change, it stops and the run
+for the new state takes over. Period filters and historical end dates
 remain computed on demand using full-history inputs. First Map use still parses
 tracks and computes density.
 

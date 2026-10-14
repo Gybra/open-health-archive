@@ -1,12 +1,14 @@
-import fcntl
-import os
+import json
+import subprocess
 import sys
+import threading
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 from streamlit.testing.v1 import AppTest
 from test_apps import three_app_archive
 
@@ -34,12 +36,12 @@ def prepare(tmp_path):
     return load, root, cache, config
 
 
-def prepared(load):
-    assert app_choices(load(Settings()).tables) == LABELS
+def prepared(load, settings):
+    assert app_choices(load(settings).tables) == LABELS
     with patch.object(rm, "derive", side_effect=AssertionError("not prepared")):
         for apps in rm.app_subsets(LABELS):
             for order in (apps, apps[::-1]):
-                load(Settings(apps=order))
+                load(replace(settings, apps=order))
 
 
 def test_choices_to_prepare_go_from_single_apps_up_and_are_capped():
@@ -55,7 +57,7 @@ def test_background_prepares_every_app_choice(tmp_path):
     load, root, cache, config = prepare(tmp_path)
     everything = load(Settings())
     rm.precompute(root, cache, config)
-    prepared(load)
+    prepared(load, Settings())
     two = load(Settings(apps=["Unknown app", "Mi Fitness"]))
     expected = daily_summary(
         select_apps(everything.tables, ["Mi Fitness", "Unknown app"]),
@@ -76,7 +78,7 @@ def test_background_keeps_going_when_only_apps_change(tmp_path):
 
     with patch.object(rm, "derive", pick):
         rm.precompute(root, cache, config)
-    prepared(load)
+    prepared(load, Settings())
 
 
 def test_background_stops_when_other_settings_change(tmp_path):
@@ -104,19 +106,68 @@ def test_background_stops_when_the_archive_changes(tmp_path):
         rm.precompute(root, cache, config)
 
 
-def test_one_background_run_at_a_time(tmp_path):
+def test_a_newer_run_waits_for_a_stale_one_and_prepares_the_new_settings(tmp_path):
+    load, root, cache, config = prepare(tmp_path)
+    everything = load(Settings())
+    newer = replace(Settings(), worn_hours_threshold=11)
+    original = rm.derive
+    deriving, release = threading.Event(), threading.Event()
+
+    def stall(tables, settings):
+        if settings.worn_hours_threshold != 11:
+            deriving.set()
+            release.wait(60)
+        return original(tables, settings)
+
+    with patch.object(rm, "derive", stall):
+        stale = threading.Thread(target=rm.precompute, args=(root, cache, config))
+        stale.start()
+        assert deriving.wait(60)
+        save_settings(config, newer)
+        load(newer)
+        newest = threading.Thread(target=rm.precompute, args=(root, cache, config))
+        newest.start()
+        newest.join(2)  # it must still be waiting for the stale run
+        release.set()
+        stale.join(120)
+        newest.join(120)
+    prepared(load, newer)
+    published = [e["key"] for e in json.loads((cache / "current.json").read_bytes())["derived"]]
+    assert rm.keys(everything.content_digest, Settings(apps=["Mi Fitness"]))[1] not in published
+
+
+@pytest.mark.parametrize("error", [RuntimeError("PRIVATE 187 bpm"), KeyboardInterrupt()])
+def test_background_errors_stay_inside_the_run(tmp_path, error):
     load, root, cache, config = prepare(tmp_path)
     load(Settings())
-    fd = os.open(cache / ".precompute.lock", os.O_CREAT | os.O_RDWR, 0o600)
-    try:
-        fcntl.flock(fd, fcntl.LOCK_EX)
-        with patch.object(rm, "derive", side_effect=AssertionError("ran twice")):
-            rm.precompute(root, cache, config)
-    finally:
-        os.close(fd)
+    with patch.object(rm, "derive", side_effect=error):
+        rm.precompute(root, cache, config)
 
 
-def test_viewer_starts_one_low_priority_run_per_data_and_settings(tmp_path, monkeypatch):
+def test_a_failing_background_process_prints_nothing(tmp_path, capfd):
+    load, root, cache, config = prepare(tmp_path)
+    everything = load(Settings())
+    config.write_text("edited by hand")
+    process = start_precompute(root, cache, config, everything.content_digest, Settings())
+    process.join(180)
+    assert process.exitcode == 0
+    assert capfd.readouterr().err == ""
+
+
+def test_the_background_process_makes_no_connections(tmp_path):
+    missing = str(tmp_path / "missing")
+    code = (
+        "import socket, sys\n"
+        "from pathlib import Path\n"
+        "from healthviz import read_model\n"
+        "read_model.background(*[Path(sys.argv[1])] * 3)\n"
+        "socket.create_connection(('127.0.0.1', 9), timeout=1)\n"
+    )
+    run = subprocess.run([sys.executable, "-c", code, missing], capture_output=True, text=True)
+    assert "outbound connections are disabled" in run.stderr
+
+
+def test_viewer_starts_one_daemon_run_per_data_and_settings(tmp_path, monkeypatch):
     load, root, cache, config = prepare(tmp_path)
     started = []
 
@@ -134,7 +185,23 @@ def test_viewer_starts_one_low_priority_run_per_data_and_settings(tmp_path, monk
     start_precompute(root, cache, config, "digest", Settings(apps=["Mi Fitness"]))
     start_precompute(root, cache, config, "digest", replace(Settings(), worn_hours_threshold=11))
     start_precompute(root, cache, config, "new data", Settings())
-    assert [(target, daemon) for target, _, daemon in started] == [(rm.precompute, True)] * 3
+    assert [(target, daemon) for target, _, daemon in started] == [(rm.background, True)] * 3
+
+
+def test_a_run_that_cannot_start_leaves_the_viewer_working(tmp_path, monkeypatch):
+    load, root, cache, config = prepare(tmp_path)
+
+    class Process:
+        def __init__(self, target, args, daemon):
+            pass
+
+        def start(self):
+            raise OSError("no more processes")
+
+    monkeypatch.setattr(
+        rm.multiprocessing, "get_context", lambda method: SimpleNamespace(Process=Process)
+    )
+    assert start_precompute(root, cache, config, "digest", Settings()) is None
 
 
 def test_dashboard_starts_the_background_run(tmp_path, monkeypatch):
@@ -154,4 +221,4 @@ def test_the_background_process_really_runs(tmp_path):
     process = start_precompute(root, cache, config, everything.content_digest, Settings())
     process.join(180)
     assert process.exitcode == 0
-    prepared(load)
+    prepared(load, Settings())
