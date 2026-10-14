@@ -20,6 +20,14 @@ def main(argv: list[str] | None = None) -> int:
     xiaomi.add_argument("--tracks-dir", type=Path)
     # A container's timezone is not the user's; explicit IANA zone avoids silent UTC defaults.
     xiaomi.add_argument("--timezone", required=True, help="IANA zone, e.g. Europe/Rome")
+    health_connect = importer.add_parser("health-connect")
+    health_connect.add_argument("source", type=Path, help="Export zip or the folder holding it")
+    health_connect.add_argument("--out", type=Path, required=True)
+    health_connect.add_argument("--status", type=Path, required=True)
+    health_connect.add_argument("--journal", type=Path, required=True)
+    health_connect.add_argument("--timezone", help="IANA zone for records without an offset")
+    health_connect.add_argument("--config", type=Path, help="Use its fallback timezone")
+    health_connect.add_argument("--label", default="", help="Folder name shown in the dashboard")
     viewer = commands.add_parser("view", help="Consult a local archive")
     viewer.add_argument("archive", nargs="?", type=Path)
     viewer.add_argument(
@@ -43,6 +51,8 @@ def main(argv: list[str] | None = None) -> int:
             container=args.container,
             cache_dir=args.cache_dir,
         )
+    if args.vendor == "health-connect":
+        return import_health_connect_command(args)
     try:
         result = import_xiaomi(
             args.export, args.out, zone=ZoneInfo(args.timezone), tracks_dir=args.tracks_dir
@@ -63,4 +73,40 @@ def main(argv: list[str] | None = None) -> int:
     print(f"warnings: {len(result.warnings)}")
     for warning in result.warnings[:50]:
         print(warning, file=sys.stderr)
+    return 0
+
+
+def import_health_connect_command(args) -> int:
+    from healthviz.health_connect.importer import import_health_connect
+    from healthviz.settings import SettingsError, load_settings
+
+    try:
+        name = args.timezone or (
+            load_settings(args.config).default_timezone if args.config else None
+        )
+        if name is None:
+            print("import failed: give --timezone or --config", file=sys.stderr)
+            return 1
+        zone = ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        print("import failed: unknown timezone", file=sys.stderr)
+        return 1
+    except SettingsError as error:
+        print(f"import failed: {error}", file=sys.stderr)
+        return 1
+    status = import_health_connect(
+        args.source, args.out, zone=zone, status=args.status, journal=args.journal, label=args.label
+    )
+    if status.error:
+        print(f"import failed: {status.error}", file=sys.stderr)
+        return 1
+    if status.already_imported:
+        print("already imported")
+        return 0
+    for table, count in status.counts.items():
+        print(f"{table}: {count}")
+    for table, count in status.skipped.items():
+        print(f"skipped {table}: {count}")
+    for kind, count in status.not_imported.items():
+        print(f"not imported {kind}: {count}")
     return 0

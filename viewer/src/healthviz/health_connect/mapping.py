@@ -7,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from healthviz.archive.devices import Device
 from healthviz.archive.schema import TABLES, Row
+from healthviz.archive.validate import validate_row
 from healthviz.archive.values import local_date, number, offset_text, utc_iso
 from healthviz.health_connect.export import REQUIRED, ExportError, HealthConnectExport
 from healthviz.health_connect.gpx import route_gpx
@@ -194,18 +195,20 @@ def bound_for(table: str, row: Row):
     return BOUNDS.get((table, row["kind"])) if table == "calories" else BOUNDS.get(table)
 
 
-def drop_implausible(result: Mapped) -> None:
+def drop_unusable(result: Mapped) -> None:
+    """Rows the archive would reject are skipped; many implausible values stop the import."""
     for table, rows in result.tables.items():
+        valid = [row for row in rows if not validate_row(TABLES[table], row)]
         kept = []
-        for row in rows:
+        for row in valid:
             bound = bound_for(table, row)
             if bound is None or bound[1] <= float(row[bound[0]]) <= bound[2]:
                 kept.append(row)
-        dropped = len(rows) - len(kept)
-        if dropped >= STOP_MINIMUM and dropped > STOP_SHARE * len(rows):
+        implausible = len(valid) - len(kept)
+        if implausible >= STOP_MINIMUM and implausible > STOP_SHARE * len(rows):
             raise ExportError(f"implausible {table} values; the export format may have changed")
-        if dropped:
-            result.skipped[table] = dropped
+        if len(kept) < len(rows):
+            result.skipped[table] = len(rows) - len(kept)
             result.tables[table] = kept
 
 
@@ -213,5 +216,7 @@ def map_export(export: HealthConnectExport, zone: ZoneInfo) -> Mapped:
     mapper = Mapper(export, zone)
     for step in (map_intervals, map_instants, map_heart_rate, map_sleep, map_workouts):
         step(mapper)
-    drop_implausible(mapper.result)
+    drop_unusable(mapper.result)
+    linked = {row["track_file"] for row in mapper.result.tables.get("workouts", [])}
+    mapper.result.tracks = {k: v for k, v in mapper.result.tracks.items() if k in linked}
     return mapper.result
