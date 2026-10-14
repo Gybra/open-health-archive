@@ -1,7 +1,7 @@
 """Period values against the user's usual: the same statistic over the 90 days before."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 import pandas as pd
@@ -82,22 +82,20 @@ def compare_nights(
 
 
 def compare_weekly_total(daily: pd.DataFrame, metric: str, start: date, end: date) -> Comparison:
-    """Weekly totals: a day without any record counts as zero, an ambiguous day as unknown."""
+    """Weekly totals from complete days: no workout on a worn day is 0, an unworn day unknown."""
     absent = daily[f"{metric}_quality"].eq("missing")
-    values = pd.to_numeric(daily[metric]).mask(absent, 0.0)
-    period, before = windows(daily.date_local, start, end)
-    now, usual = values.loc[period].dropna(), values.loc[before].dropna()
-    # Whole 7-day blocks counted back from the period start.
+    values = pd.to_numeric(daily[metric]).mask(absent, 0.0).where(daily.complete.astype(bool))
+    result = compare(values, daily.date_local, start, end, MIN_DAYS)
+    usual = values.loc[windows(daily.date_local, start, end)[1]].dropna()
+    # 7-day blocks counted back from the period start; a block needs 4 counted days.
     blocks = daily.date_local.loc[usual.index].map(lambda d: ((start - d).days - 1) // 7)
-    weeks = usual.groupby(blocks).agg(["sum", "size"])
-    weeks = weeks.loc[weeks["size"] == 7, "sum"]
-    return Comparison(
-        mean(now) * 7 if len(now) else None,
-        mean(usual) * 7 if len(usual) else None,
-        spread(weeks) if len(weeks) > 1 else None,
-        len(now),
-        (end - start).days + 1,
-        before.sum() >= MIN_DAYS,
+    weeks = usual.groupby(blocks).agg(["mean", "size"])
+    weeks = weeks.loc[weeks["size"] >= 4, "mean"] * 7
+    return replace(
+        result,
+        value=None if result.value is None else result.value * 7,
+        usual=None if result.usual is None else result.usual * 7,
+        spread=spread(weeks) if len(weeks) > 1 else None,
     )
 
 

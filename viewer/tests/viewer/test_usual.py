@@ -129,3 +129,18 @@ def test_latest_counted_day_is_reported():
     frame = daily([1000.0] * 95 + [None] * 5)
     result = compare_daily(frame, "steps", START + timedelta(days=5), START + timedelta(days=9))
     assert result.value is None and result.latest == START + timedelta(days=4)
+
+
+def test_weekly_workouts_ignore_unworn_days():
+    minutes = [60.0 if i % 2 else None for i in range(104)]
+    quality = ["missing" if m is None else "recorded" for m in minutes]
+    frame = daily([0.0] * 104, workout_min=minutes, workout_min_quality=quality)
+    # A drawer fortnight before the period and four unworn days inside it: unknown, not 0.
+    frame.loc[60:73, "complete"] = False
+    frame.loc[[90, 92, 94, 96], "complete"] = False
+    result = compare_weekly_total(frame, "workout_min", START, START + timedelta(days=13))
+    assert result.counted == 10
+    assert result.value == pytest.approx(7 * 60 * 7 / 10)
+    assert result.usual == pytest.approx(30 * 7)
+    frame.loc[:65, "complete"] = False
+    assert not compare_weekly_total(frame, "workout_min", START, START + timedelta(days=13)).enough
