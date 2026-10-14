@@ -1,0 +1,27 @@
+name: Checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - name: Build the development image
+        run: docker compose build dev
+      # The checkout belongs to the runner user, so the container must not write caches into it.
+      - name: Format, lint and test without network
+        run: >-
+          docker compose run --rm -e RUFF_NO_CACHE=true dev sh -c
+          'uv run --no-sync ruff format --check .
+          && uv run --no-sync ruff check .
+          && uv run --no-sync pytest -q -p no:cacheprovider'
