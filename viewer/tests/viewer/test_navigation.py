@@ -118,3 +118,12 @@ def test_every_page_renders_on_sparse_archive(tmp_path, monkeypatch):
     next(b for b in app.button if b.label == "Open day →").click().run()
     assert app.session_state["view"] == "Day"
     assert not app.exception and not app.error
+
+
+def test_custom_period_waits_for_the_second_date(tmp_path, monkeypatch):
+    app = start(monkeypatch, write_viewer_archive(tmp_path / "a"), tmp_path / "c.toml")
+    app.segmented_control(key="preset").set_value("Custom").run()
+    first = app.session_state["snapshot"][2].date_local.min()
+    app.date_input(key="period").set_value((first + timedelta(days=2),)).run()
+    assert any(i.value == "Choose the start and end dates." for i in app.info)
+    assert app.date_input(key="period").value == (first + timedelta(days=2),)

@@ -56,7 +56,8 @@ def keep_navigation_state(daily):
     state = st.session_state
     state.setdefault("preset", "30d")
     period = state.get("period")
-    if not period or len(period) != 2 or period[0] < first or period[1] > last:
+    # A single date is a range being picked; keep it until the second click.
+    if not period or any(day < first or day > last for day in period):
         state["period"] = (first, last)
     for key in ("preset", "period"):
         state[key] = state[key]
