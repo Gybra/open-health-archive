@@ -3,6 +3,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -143,6 +144,45 @@ def manifest_bytes(root, generator):
     return (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
 
 
+def save_journal(root: Path, journal: Path, paths: list[str]) -> None:
+    """Keep every target's previous bytes so an interrupted write can be undone."""
+    (journal / "blobs").mkdir(parents=True, mode=0o700)
+    journal.chmod(0o700)
+    entries = []
+    for number, rel in enumerate(paths):
+        existed = (root / rel).exists()
+        if existed:
+            blob = journal / "blobs" / str(number)
+            with blob.open("wb") as f:
+                f.write((root / rel).read_bytes())
+                f.flush()
+                os.fsync(f.fileno())
+        entries.append({"path": rel, "existed": existed})
+    # The entry list is written last: without it nothing was replaced yet.
+    with (journal / "entries.json").open("w") as f:
+        json.dump(entries, f)
+        f.flush()
+        os.fsync(f.fileno())
+
+
+def recover_archive(root: Path, journal: Path) -> bool:
+    """Undo an interrupted write recorded in journal; True when files were restored."""
+    if not journal.exists():
+        return False
+    entries_file = journal / "entries.json"
+    restored = entries_file.exists()
+    if restored:
+        entries = json.loads(entries_file.read_text())
+        for number, entry in enumerate(entries):
+            target = root / entry["path"]
+            if entry["existed"]:
+                atomic_write(target, (journal / "blobs" / str(number)).read_bytes())
+            elif target.exists():
+                target.unlink()
+    shutil.rmtree(journal)
+    return restored
+
+
 def write_archive(
     root: Path,
     tables: dict[str, list[Row]],
@@ -152,14 +192,31 @@ def write_archive(
     *,
     delete_keys=None,
     replace_sessions=None,
+    delete_tracks: set[str] | None = None,
+    journal: Path | None = None,
 ) -> None:
+    if journal is not None and journal.exists():
+        raise SchemaMismatch("archive: interrupted import must be recovered first")
+    if journal is not None and journal.resolve().is_relative_to(root.resolve()):
+        raise SchemaMismatch("archive: journal must live outside the archive")
     preflight(root)
-    if any(not safe_track_path(path) for path in tracks):
+    removed = set(delete_tracks or ())
+    if any(not safe_track_path(path) for path in [*tracks, *removed]):
         raise SchemaMismatch("unsafe track path")
     # Reconcile owned rows across all partitions before replacing any file.
     prepared = prepare_files(root, tables, devices, delete_keys or {}, replace_sessions or set())
-    for rel, data in {**prepared, **tracks}.items():
-        target = root / rel
-        if not target.exists() or target.read_bytes() != data:
-            atomic_write(target, data)
+    changed = {
+        rel: data
+        for rel, data in {**prepared, **tracks}.items()
+        if not (root / rel).exists() or (root / rel).read_bytes() != data
+    }
+    removed = sorted(p for p in removed if p not in tracks and (root / p).exists())
+    if journal is not None:
+        save_journal(root, journal, [*changed, *removed, "manifest.json"])
+    for rel, data in changed.items():
+        atomic_write(root / rel, data)
+    for rel in removed:
+        (root / rel).unlink()
     atomic_write(root / "manifest.json", manifest_bytes(root, generator))
+    if journal is not None:
+        shutil.rmtree(journal)

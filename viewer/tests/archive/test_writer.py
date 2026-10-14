@@ -5,7 +5,7 @@ import pytest
 from test_validate import hr
 
 from healthviz.archive.validate import validate_archive
-from healthviz.archive.writer import SchemaMismatch, write_archive
+from healthviz.archive.writer import SchemaMismatch, recover_archive, write_archive
 
 
 def snapshot(root):
@@ -69,3 +69,78 @@ def test_fixture_matches_generator(tmp_path):
     expected = Path("/workspace/schema/fixtures/archive")
     assert snapshot(tmp_path) == snapshot(expected)
     assert validate_archive(expected) == []
+
+
+def two_track_archive(root):
+    from fixture_archive import GPX
+
+    tracks = {"tracks/a.gpx": GPX, "tracks/b.gpx": GPX}
+    write_archive(root, {"heart_rate": [hr()]}, [], tracks, "test")
+
+
+def test_delete_tracks_removes_file_and_manifest_entry(tmp_path):
+    two_track_archive(tmp_path)
+
+    write_archive(tmp_path, {}, [], {}, "test", delete_tracks={"tracks/a.gpx"})
+
+    assert not (tmp_path / "tracks/a.gpx").exists()
+    assert (tmp_path / "tracks/b.gpx").exists()
+    assert "tracks/a.gpx" not in (tmp_path / "manifest.json").read_text()
+    assert validate_archive(tmp_path) == []
+
+
+def test_delete_tracks_rejects_unsafe_paths(tmp_path):
+    two_track_archive(tmp_path)
+    before = snapshot(tmp_path)
+
+    with pytest.raises(SchemaMismatch):
+        write_archive(tmp_path, {}, [], {}, "test", delete_tracks={"../x.gpx"})
+
+    assert snapshot(tmp_path) == before
+
+
+def test_interrupted_write_is_rolled_back_next_run(tmp_path, monkeypatch):
+    from healthviz.archive import writer
+
+    root, journal = tmp_path / "archive", tmp_path / "journal"
+    two_track_archive(root)
+    before = snapshot(root)
+    real, calls = writer.atomic_write, []
+
+    def failing(path, data):
+        calls.append(path)
+        if len(calls) == 2:
+            raise OSError("disk full")
+        real(path, data)
+
+    monkeypatch.setattr(writer, "atomic_write", failing)
+    rows = {"heart_rate": [hr(bpm="70"), hr(time_utc="2026-11-01T00:00:00Z", record_id="n")]}
+    with pytest.raises(OSError):
+        write_archive(root, rows, [], {}, "test", delete_tracks={"tracks/a.gpx"}, journal=journal)
+    monkeypatch.setattr(writer, "atomic_write", real)
+    assert validate_archive(root) != []
+    with pytest.raises(SchemaMismatch):
+        write_archive(root, {}, [], {}, "test", journal=journal)
+
+    assert recover_archive(root, journal) is True
+
+    assert snapshot(root) == before
+    assert validate_archive(root) == []
+    assert not journal.exists()
+
+
+def test_recover_without_journal_is_noop(tmp_path):
+    two_track_archive(tmp_path / "archive")
+    before = snapshot(tmp_path / "archive")
+
+    assert recover_archive(tmp_path / "archive", tmp_path / "journal") is False
+    assert snapshot(tmp_path / "archive") == before
+
+
+def test_journal_removed_after_success(tmp_path):
+    journal = tmp_path / "journal"
+
+    write_archive(tmp_path / "archive", {"heart_rate": [hr()]}, [], {}, "test", journal=journal)
+
+    assert not journal.exists()
+    assert validate_archive(tmp_path / "archive") == []
