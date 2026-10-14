@@ -97,13 +97,15 @@ def test_background_stops_when_other_settings_change(tmp_path):
     assert len(calls) == 1
 
 
-def test_background_stops_when_the_archive_changes(tmp_path):
+def test_background_skips_raw_tables_not_built_for_the_current_data(tmp_path, monkeypatch):
     load, root, cache, config = prepare(tmp_path)
     load(Settings())
-    path = next(root.glob("steps/*.csv"))
-    path.write_bytes(path.read_bytes() + b"\n")
-    with patch.object(rm, "derive", side_effect=AssertionError("prepared stale data")):
+    # A valid archive whose raw tables are not the published ones yet, as after an import.
+    monkeypatch.setattr(rm.store, "FORMAT_VERSION", rm.store.FORMAT_VERSION + 1)
+    calls = []
+    with patch.object(rm, "derive", lambda *args: calls.append(args)):
         rm.precompute(root, cache, config)
+    assert calls == []
 
 
 def test_a_newer_run_waits_for_a_stale_one_and_prepares_the_new_settings(tmp_path):
@@ -127,7 +129,8 @@ def test_a_newer_run_waits_for_a_stale_one_and_prepares_the_new_settings(tmp_pat
         load(newer)
         newest = threading.Thread(target=rm.precompute, args=(root, cache, config))
         newest.start()
-        newest.join(2)  # it must still be waiting for the stale run
+        newest.join(2)
+        assert newest.is_alive()  # still waiting for the stale run
         release.set()
         stale.join(120)
         newest.join(120)
