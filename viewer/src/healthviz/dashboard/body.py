@@ -13,7 +13,7 @@ from healthviz.dashboard.charts import (
     raw_data,
     show_number,
 )
-from healthviz.dashboard.context import device_names, open_page
+from healthviz.dashboard.context import day_picker, device_names, open_page
 from healthviz.dashboard.format import day_text, kg
 
 
@@ -39,6 +39,7 @@ def render(context):
         width="stretch",
         key="body-weight",
     )
+    day_picker(context, "body")
     tables = context.tables
     weights, _ = resolve_rows("weight", tables["weight"], tables["devices"], context.settings)
     weights = filtered(weights, start, end).sort_values("time_utc")

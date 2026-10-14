@@ -113,3 +113,8 @@ def test_every_page_renders_on_sparse_archive(tmp_path, monkeypatch):
     for view in ("Daily", "Workouts", "Routes"):
         activity_view(app, view)
         assert not app.exception and not app.error, view
+    # Without nights or workouts the Day view is still reachable from a daily page.
+    open_page(app, "Heart")
+    next(b for b in app.button if b.label == "Open day →").click().run()
+    assert app.session_state["view"] == "Day"
+    assert not app.exception and not app.error

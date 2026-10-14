@@ -14,7 +14,7 @@ from healthviz.dashboard.charts import (
     raw_data,
     show_number,
 )
-from healthviz.dashboard.context import derived, open_page, remember, restore
+from healthviz.dashboard.context import day_picker, derived, open_page, remember, restore
 from healthviz.dashboard.format import count_text, kcal, km, minutes_text
 
 # Daily metric → (label, chart tab, unit, scale, value text).
@@ -39,6 +39,7 @@ def daily_view(context, results):
         "Active and total energy are different measures, never added. Workouts are not "
         "added to daily energy; no calorie balance is computed."
     )
+    day_picker(context, "activity")
     notes(activity_observations(daily, derived(context)[1], end))
     raw_data(
         {

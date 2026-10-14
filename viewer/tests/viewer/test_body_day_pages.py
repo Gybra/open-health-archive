@@ -74,3 +74,17 @@ def test_back_from_day_restores_the_picked_night(tmp_path, monkeypatch):
     next(b for b in app.button if b.label == "Open this day →").click().run()
     next(b for b in app.button if b.label == "← Back").click().run()
     assert app.selectbox(key="night").value == older
+
+
+def test_day_picker_survives_a_shorter_period(tmp_path, monkeypatch):
+    from datetime import timedelta
+
+    from area_archive import LAST
+
+    root = write_area_archive(tmp_path / "archive")
+    app = open_page(start(monkeypatch, root, tmp_path / "config.toml"), "Heart")
+    next(d for d in app.date_input if d.label == "Day").set_value(LAST - timedelta(days=20)).run()
+    app.segmented_control(key="preset").set_value("7d").run()
+    assert not app.exception and not app.error
+    next(b for b in app.button if b.label == "Open day →").click().run()
+    assert app.session_state["day"] == LAST

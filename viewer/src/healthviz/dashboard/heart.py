@@ -14,7 +14,7 @@ from healthviz.dashboard.charts import (
     raw_data,
     show_number,
 )
-from healthviz.dashboard.context import open_page
+from healthviz.dashboard.context import day_picker, open_page
 from healthviz.dashboard.format import bpm, percent
 
 COLUMNS = ["date_local", "worn_hours", "complete", "hr_mean", "hr_min", "hr_max"]
@@ -61,6 +61,7 @@ def render(context):
             key="heart-coverage",
         )
         st.caption("Hours with heart-rate samples: a coverage proxy, not proven wear time.")
+    day_picker(context, "heart")
     notes(heart_observations(daily, end))
     resting_columns = [c for c in period.columns if c.startswith(("resting_hr", "spo2"))]
     raw_data(
