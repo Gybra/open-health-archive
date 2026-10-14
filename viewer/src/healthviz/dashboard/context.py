@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from healthviz.analysis.devices import device_labels, device_sources
 from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import resolve_rows
 from healthviz.settings import Settings
@@ -59,3 +60,21 @@ def derived(context: PageContext) -> tuple[pd.DataFrame, pd.DataFrame]:
         cached = (key, sleep_summary(sessions, tables["sleep_stages"]), workouts)
         st.session_state["overview_sources"] = cached
     return cached[1], cached[2]
+
+
+def per_snapshot(name, compute):
+    """Keep a derived value for the current snapshot (archive and settings)."""
+    key = st.session_state["snapshot"][0]
+    cached = st.session_state.get(name)
+    if cached is None or cached[0] != key:
+        cached = (key, compute())
+        st.session_state[name] = cached
+    return cached[1]
+
+
+def device_names(context) -> dict[str, str]:
+    devices = context.tables["devices"]
+
+    return per_snapshot(
+        "device_names", lambda: device_labels(devices, device_sources(context.tables))
+    )

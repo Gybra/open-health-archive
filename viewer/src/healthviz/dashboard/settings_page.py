@@ -6,9 +6,9 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from healthviz.analysis.devices import device_labels, device_sources, suggest_duplicates
+from healthviz.analysis.devices import suggest_duplicates
 from healthviz.dashboard import overlaps
-from healthviz.dashboard.context import open_page
+from healthviz.dashboard.context import device_names, open_page, per_snapshot
 from healthviz.dashboard.format import stamp_text
 from healthviz.health_connect.status import load_status
 from healthviz.settings import save_settings
@@ -26,24 +26,6 @@ METRICS = [
     "weight",
     "spo2",
 ]
-
-
-def per_snapshot(name, compute):
-    """Keep a derived value for the current snapshot (archive and settings)."""
-    key = st.session_state["snapshot"][0]
-    cached = st.session_state.get(name)
-    if cached is None or cached[0] != key:
-        cached = (key, compute())
-        st.session_state[name] = cached
-    return cached[1]
-
-
-def device_names(context) -> dict[str, str]:
-    devices = context.tables["devices"]
-
-    return per_snapshot(
-        "device_names", lambda: device_labels(devices, device_sources(context.tables))
-    )
 
 
 def duplicates(context) -> list[tuple[str, str]]:

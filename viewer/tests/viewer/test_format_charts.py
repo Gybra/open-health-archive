@@ -97,9 +97,12 @@ def test_stages_figure_stacks_known_stages():
 
 
 def test_clock_figure_spans_midnight():
-    bars = clock_figure(nights()).data[0]
+    figure = clock_figure(nights())
+    bars = figure.data[0]
     assert list(bars.base) == [330, 375]  # minutes after 18:00
     assert list(bars.y) == [450, 385]
+    assert list(figure.layout.yaxis.range) == [810, 300]  # latest wake at the bottom
+    assert "06:00" in figure.layout.yaxis.ticktext
 
 
 def test_amounts_start_at_zero_and_levels_do_not():

@@ -2,8 +2,10 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from healthviz.analysis.sources import resolve_rows
 from healthviz.analysis.usual import READINGS
 from healthviz.archive.values import parse_offset
+from healthviz.dashboard.format import difference_text, measured_text
 
 FADED, AVERAGE, USUAL = "#93b4ef", "#1f6feb", "#9ca3af"
 # Levels (heart rate, weight, SpO₂) are read against their own range; amounts start at zero.
@@ -170,17 +172,14 @@ def clock_figure(nights) -> go.Figure:
     """One bar per night from falling asleep to waking, on an axis from 18:00 to 18:00."""
     onset = (nights.onset_wall_min - 1080) % 1440
     wake = (nights.wake_wall_min - 1080) % 1440
-    figure = go.Figure(
-        go.Bar(x=nights.date_local, base=onset, y=(wake - onset) % 1440, marker_color=AVERAGE)
-    )
-    figure.update_layout(
-        showlegend=False,
-        yaxis={
-            "tickvals": [0, 360, 720, 1080, 1440],
-            "ticktext": ["18:00", "00:00", "06:00", "12:00", "18:00"],
-            "autorange": "reversed",
-        },
-    )
+    length = (wake - onset) % 1440
+    figure = go.Figure(go.Bar(x=nights.date_local, base=onset, y=length, marker_color=AVERAGE))
+    ticks = list(range(0, 1441, 120))
+    axis = {"tickvals": ticks, "ticktext": [f"{(18 + t // 60) % 24:02d}:00" for t in ticks]}
+    if not nights.empty:
+        # Reversed: evening at the top, morning at the bottom, half an hour of margin.
+        axis["range"] = [int((onset + length).max()) + 30, int(onset.min()) - 30]
+    figure.update_layout(showlegend=False, yaxis=axis)
     return compact(figure, "local time", height=300)
 
 
@@ -189,6 +188,37 @@ def raw_data(frames: dict[str, pd.DataFrame]) -> None:
     with st.expander("Raw data and sources"):
         for title, frame in frames.items():
             summary_table(frame, title)
+
+
+def overlap_audit(context, metric) -> pd.DataFrame:
+    """Rows of days where several sources report the metric, or one source overlaps itself."""
+    tables = context.tables
+    _, audit = resolve_rows(metric, tables[metric], tables["devices"], context.settings)
+    audit = filtered(audit, context.start, context.end)
+    if audit.empty:
+        return audit
+    sources = (
+        audit[["date_local", "device_id", "ingest", "source_app"]]
+        .drop_duplicates()
+        .groupby("date_local")
+        .size()
+    )
+    return audit.loc[
+        audit.date_local.isin(sources.loc[sources > 1].index) | audit.quality.eq("ambiguous")
+    ]
+
+
+def show_number(label, result, value_text, change_text, noun=None):
+    """A key number with its neutral difference from the usual and, optionally, its coverage."""
+    st.metric(
+        label,
+        "—" if result.value is None else value_text(result.value),
+        delta=difference_text(result, change_text) or None,
+        delta_color="off",
+        delta_arrow="off",
+    )
+    if noun:
+        st.caption(measured_text(result, noun))
 
 
 def notes(messages: list[str]) -> None:

@@ -1,12 +1,9 @@
 import streamlit as st
 
-from healthviz.analysis.sources import resolve_rows
-from healthviz.dashboard.charts import filtered, summary_table
+from healthviz.dashboard.charts import overlap_audit, summary_table
 
 
 def render(context):
-    tables, settings = context.tables, context.settings
-    start, end = context.start, context.end
     metric = st.selectbox(
         "Metric",
         [
@@ -21,18 +18,7 @@ def render(context):
             "spo2",
         ],
     )
-    _, audit = resolve_rows(metric, tables[metric], tables["devices"], settings)
-    audit = filtered(audit, start, end)
-    if not audit.empty:
-        sources = (
-            audit[["date_local", "device_id", "ingest", "source_app"]]
-            .drop_duplicates()
-            .groupby("date_local")
-            .size()
-        )
-        audit = audit.loc[
-            audit.date_local.isin(sources.loc[sources > 1].index) | audit.quality.eq("ambiguous")
-        ]
+    audit = overlap_audit(context, metric)
     st.caption(
         "Original source values are compared, never added. Priority chooses one "
         "source per local hour, overlapping session or local day. Lower-priority "

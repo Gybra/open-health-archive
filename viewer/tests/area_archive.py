@@ -17,7 +17,7 @@ def stamp(day, hour, minute=0):
     return datetime(day.year, day.month, day.day, hour, minute).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
-def write_area_archive(root, *, weight_in_period=True):
+def write_area_archive(root, *, weight_in_period=True, utc_offset="+00:00"):
     tables = {name: [] for name in TABLES if name != "devices"}
     for index in range(DAYS):
         day = LAST - timedelta(days=DAYS - 1 - index)
@@ -29,7 +29,7 @@ def write_area_archive(root, *, weight_in_period=True):
                     "heart_rate",
                     record_id=f"hr-{index}-{hour}",
                     time_utc=stamp(day, hour),
-                    utc_offset="+00:00",
+                    utc_offset=utc_offset,
                     bpm="70",
                 )
             )
@@ -39,7 +39,7 @@ def write_area_archive(root, *, weight_in_period=True):
                 record_id=f"steps-{index}",
                 start_utc=stamp(day, 12),
                 end_utc=stamp(day, 13),
-                utc_offset="+00:00",
+                utc_offset=utc_offset,
                 count=str((9000 if recent else 8000) + 200 * wiggle),
             )
         )
@@ -51,7 +51,7 @@ def write_area_archive(root, *, weight_in_period=True):
                 session_id=f"night-{index}",
                 start_utc=stamp(day - timedelta(days=1), 23),
                 end_utc=stamp(day, 7, 0),
-                utc_offset="+00:00",
+                utc_offset=utc_offset,
                 has_stages="false",
                 is_complete="true",
                 deep_min="90",
@@ -76,7 +76,7 @@ def write_area_archive(root, *, weight_in_period=True):
                     "weight",
                     record_id=f"weight-{index}",
                     time_utc=stamp(day, 7, 30),
-                    utc_offset="+00:00",
+                    utc_offset=utc_offset,
                     kg="69.0" if recent else "70.0",
                 )
             )

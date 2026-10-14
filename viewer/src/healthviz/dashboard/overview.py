@@ -9,13 +9,11 @@ from healthviz.analysis.usual import (
     compare_readings,
     compare_weekly_total,
 )
-from healthviz.dashboard.charts import daily_figure, filtered, raw_data
+from healthviz.dashboard.charts import daily_figure, filtered, raw_data, show_number
 from healthviz.dashboard.context import derived, open_page
 from healthviz.dashboard.format import (
     clock_text,
     count_text,
-    difference_text,
-    measured_text,
     minutes_text,
 )
 
@@ -90,17 +88,6 @@ CHARTS = {
     "Activity": ("steps", "steps", 1, True),
     "Body": ("weight", "kg", 1, False),
 }
-
-
-def show_number(label, result, value_text, change_text, noun):
-    st.metric(
-        label,
-        "—" if result.value is None else value_text(result.value),
-        delta=difference_text(result, change_text) or None,
-        delta_color="off",
-        delta_arrow="off",
-    )
-    st.caption(measured_text(result, noun))
 
 
 def section(context, area, numbers):
