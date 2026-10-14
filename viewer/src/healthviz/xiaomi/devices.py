@@ -1,19 +1,11 @@
 import hashlib
-from dataclasses import dataclass
 
+from healthviz.archive.devices import Device
 from healthviz.archive.schema import Row
 from healthviz.xiaomi.source import XiaomiExport
 
 INGEST = "xiaomi_export"
 SOURCE_APP = "com.mi.health"
-
-
-@dataclass(frozen=True)
-class Device:
-    device_id: str
-    vendor: str
-    model: str
-    kind: str
 
 
 UNKNOWN_DEVICE = Device("xiaomi-unknown", "", "", "other")
