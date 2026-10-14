@@ -7,12 +7,21 @@ from healthviz.analysis.sources import resolve_rows
 from healthviz.dashboard.charts import filtered, hypnogram, local_times, summary_table
 
 
-def render(tables, daily, settings, *, start, end):
+def render(context):
+    tables, daily, settings, start, end = (
+        context.tables,
+        context.daily,
+        context.settings,
+        context.start,
+        context.end,
+    )
     choices = filtered(daily, start, end).date_local.tolist()
     if not choices:
         st.info("No dates in this range.")
         return
-    day = st.selectbox("Day", choices, index=len(choices) - 1)
+    wanted = st.session_state.get("day")
+    index = choices.index(wanted) if wanted in choices else len(choices) - 1
+    day = st.selectbox("Day", choices, index=index)
     row = daily.loc[daily.date_local == day]
     summary_table(row, "Selected day")
     st.caption(

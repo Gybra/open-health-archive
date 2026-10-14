@@ -2,12 +2,12 @@ import streamlit as st
 
 from healthviz.analysis.daily import period_summary
 from healthviz.analysis.observations import observations
-from healthviz.analysis.sleep import sleep_summary
-from healthviz.analysis.sources import resolve_rows
 from healthviz.dashboard.charts import calendar_bars, filtered, show_trend, summary_table
+from healthviz.dashboard.context import derived
 
 
-def render(tables, daily, settings, *, start, end):
+def render(context):
+    daily, start, end = context.daily, context.start, context.end
     frame = filtered(daily, start, end)
     for metric, title, unit in [
         ("resting_hr", "Resting heart rate", "bpm"),
@@ -27,16 +27,7 @@ def render(tables, daily, settings, *, start, end):
         "Coverage · local hours with HR samples",
         "hours with samples",
     )
-    key = st.session_state["snapshot"][0]
-    context = st.session_state.get("overview_sources")
-    if context is None or context[0] != key:
-        sessions, _ = resolve_rows(
-            "sleep_sessions", tables["sleep_sessions"], tables["devices"], settings
-        )
-        workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
-        context = (key, sleep_summary(sessions, tables["sleep_stages"]), workouts)
-        st.session_state["overview_sources"] = context
-    _, sleep, workouts = context
+    sleep, workouts = derived(context)
     st.subheader("Personal-baseline observations")
     messages = observations(daily, sleep, workouts, end)
     if not messages:

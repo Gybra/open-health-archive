@@ -1,6 +1,11 @@
 import pandas as pd
 
-from healthviz.analysis.devices import device_label, device_sources, suggest_duplicates
+from healthviz.analysis.devices import (
+    device_label,
+    device_labels,
+    device_sources,
+    suggest_duplicates,
+)
 from healthviz.settings import Settings
 
 DEVICES = pd.DataFrame(
@@ -55,6 +60,8 @@ def test_labels_name_app_model_and_ingest():
     assert device_label("hc-watch", DEVICES, sources) == "Mi Fitness · Watch (Health Connect)"
     assert device_label("hc-phone", DEVICES, sources) == "Phone (Health Connect)"
     assert device_label("missing", DEVICES, sources) == "missing"
+    # Without an app, the vendor names the source.
+    assert device_label("export-watch", DEVICES, {}) == "Fictional · Band 9"
 
 
 def test_matching_daily_steps_from_two_ingests_are_suggested():
@@ -73,3 +80,11 @@ def test_associated_or_dismissed_pairs_are_not_suggested():
 def test_different_step_counts_are_not_suggested():
     assert suggest_duplicates(tables(same_watch(other=1.3)), Settings()) == []
     assert suggest_duplicates(tables(same_watch(days=2)), Settings()) == []
+
+
+def test_identical_labels_are_numbered():
+    twins = pd.concat([DEVICES, DEVICES.iloc[[0]].assign(device_id="export-watch-b")])
+    found = device_labels(twins, {})
+    assert found["export-watch"] == "Fictional · Band 9 #1"
+    assert found["export-watch-b"] == "Fictional · Band 9 #2"
+    assert found["hc-phone"] == "Phone"

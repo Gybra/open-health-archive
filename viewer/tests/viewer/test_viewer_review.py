@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pandas as pd
 import pytest
+from dashboard_nav import activity_view, show_all
 from fixture_archive import FIXTURE_TABLES, fixture_row
 from streamlit.testing.v1 import AppTest
 from viewer_archive import write_viewer_archive
@@ -68,8 +69,8 @@ def test_untimed_gpx_retains_geometric_route():
     assert len(deck.layers[0].data) == 1
 
 
-@pytest.mark.parametrize("page", ["Activity & calories", "Map"])
-def test_empty_workouts_render_missing_state(viewer_app, tmp_path, page):
+@pytest.mark.parametrize("view", ["Daily", "Routes"])
+def test_empty_workouts_render_missing_state(viewer_app, tmp_path, view):
     import sys
     from pathlib import Path
 
@@ -89,7 +90,8 @@ def test_empty_workouts_render_missing_state(viewer_app, tmp_path, page):
         app = AppTest.from_file(
             str(Path(healthviz.__file__).parent / "dashboard/app.py"), default_timeout=30
         ).run()
-        app.selectbox(key="page").set_value(page).run()
+        show_all(app)
+        activity_view(app, view)
         assert not app.error
     finally:
         sys.argv = old
@@ -234,7 +236,8 @@ def test_missing_ascent_attribution_does_not_break_detail(viewer_app, tmp_path):
         app = AppTest.from_file(
             str(Path(healthviz.__file__).parent / "dashboard/app.py"), default_timeout=30
         ).run()
-        app.selectbox(key="page").set_value("Workouts").run()
+        show_all(app)
+        activity_view(app, "Workouts")
         assert not app.error
         assert any("attribution: unknown" in caption.value for caption in app.caption)
     finally:

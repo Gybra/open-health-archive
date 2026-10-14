@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from dashboard_nav import open_page
 from fixture_archive import fixture_row
 from streamlit.testing.v1 import AppTest
 from viewer_archive import write_viewer_archive
@@ -131,7 +132,7 @@ def test_sidebar_app_filter_changes_totals(tmp_path, monkeypatch):
     assert not app.exception
 
 
-def test_sidebar_shows_import_status(tmp_path, monkeypatch):
+def test_settings_page_shows_import_status(tmp_path, monkeypatch):
     status = dict(
         folder="~/Downloads",
         zip_name="Health Connect.zip",
@@ -144,9 +145,11 @@ def test_sidebar_shows_import_status(tmp_path, monkeypatch):
     )
 
     app, _ = viewer(tmp_path, monkeypatch, status)
+    assert any("import failed (see Settings)" in c.value for c in app.caption)
 
+    open_page(app, "Settings")
     texts = " ".join(
-        str(e.value) for kind in ("error", "warning", "caption") for e in app.sidebar.get(kind)
+        str(e.value) for kind in ("error", "warning", "caption") for e in app.get(kind)
     )
     assert "unsupported Health Connect export format" in texts
     assert "Old.zip" in texts

@@ -33,11 +33,24 @@ def device_label(device_id: str, devices: pd.DataFrame, sources) -> str:
         return device_id
     row = row.iloc[0]
     app, ingest = sources.get(device_id, ("", ""))
-    app = app_label(app)
+    vendor = row.vendor if isinstance(row.vendor, str) and row.vendor else None
+    app = app_label(app) if app else vendor
     name = row.model if isinstance(row.model, str) and row.model else str(row.kind).title()
-    text = app if name in app else f"{app} · {name}"
+    text = name if not app else app if name in app else f"{app} · {name}"
     origin = INGESTS.get(ingest, ingest)
     return text if not origin or origin in text else f"{text} ({origin})"
+
+
+def device_labels(devices: pd.DataFrame, sources) -> dict[str, str]:
+    """Labels for every device; identical ones get #1, #2… in device_id order."""
+    labels = {d: device_label(d, devices, sources) for d in sorted(devices.device_id)}
+    counts = pd.Series(list(labels.values())).value_counts()
+    seen = {}
+    for device, label in labels.items():
+        if counts[label] > 1:
+            seen[label] = seen.get(label, 0) + 1
+            labels[device] = f"{label} #{seen[label]}"
+    return labels
 
 
 def suggest_duplicates(

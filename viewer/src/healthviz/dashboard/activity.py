@@ -2,10 +2,18 @@ import streamlit as st
 
 from healthviz.analysis.daily import period_summary
 from healthviz.analysis.sources import resolve_rows
+from healthviz.dashboard import maps, workouts
 from healthviz.dashboard.charts import filtered, show_trend, summary_table
 
 
-def render(tables, daily, settings, *, start, end):
+def daily_view(context):
+    tables, daily, settings, start, end = (
+        context.tables,
+        context.daily,
+        context.settings,
+        context.start,
+        context.end,
+    )
     frame = filtered(daily, start, end)
     for metric, title, unit in [
         ("steps", "Daily steps", "count"),
@@ -19,16 +27,20 @@ def render(tables, daily, settings, *, start, end):
         "not added to daily calories; no calorie balance is computed."
     )
     summary_table(period_summary(frame, "week"), "Activity weekly totals")
-    workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
-    workouts = filtered(workouts, start, end)
-    duration = workouts.duration_s.fillna(
-        (workouts.end_utc - workouts.start_utc).dt.total_seconds()
-    )
-    workouts["kcal_per_min"] = workouts.active_kcal / (duration.where(duration > 0) / 60)
-    summary_table(workouts, "Workout calories")
+    done, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
+    done = filtered(done, start, end)
+    duration = done.duration_s.fillna((done.end_utc - done.start_utc).dt.total_seconds())
+    done["kcal_per_min"] = done.active_kcal / (duration.where(duration > 0) / 60)
+    summary_table(done, "Workout calories")
     summary_table(
-        workouts.groupby("type")[["active_kcal", "total_kcal", "kcal_per_min"]]
-        .mean()
-        .reset_index(),
+        done.groupby("type")[["active_kcal", "total_kcal", "kcal_per_min"]].mean().reset_index(),
         "Workout calories by type",
     )
+
+
+VIEWS = {"Daily": daily_view, "Workouts": workouts.render, "Routes": maps.render}
+
+
+def render(context):
+    view = st.segmented_control("Show", list(VIEWS), key="activity_view") or "Daily"
+    VIEWS[view](context)

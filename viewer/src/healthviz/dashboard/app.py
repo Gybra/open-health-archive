@@ -1,7 +1,7 @@
 import argparse
 import importlib
 from dataclasses import replace
-from datetime import date
+from datetime import timedelta
 from pathlib import Path
 
 import streamlit as st
@@ -9,90 +9,11 @@ import streamlit as st
 from healthviz.analysis.apps import app_choices, select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
-from healthviz.health_connect.status import load_status
+from healthviz.dashboard.context import PAGES, PageContext
+from healthviz.dashboard.format import day_text
+from healthviz.dashboard.settings_page import STATUS_FILE, duplicate_notice, import_line
 from healthviz.read_model import ReadModelError, load_read_model, validate_location
 from healthviz.settings import SettingsError, load_settings, save_settings
-
-STATUS_FILE = "health-connect-import.json"
-PAGES = {
-    "Overview": "overview",
-    "Sleep": "sleep",
-    "Activity & calories": "activity",
-    "Workouts": "workouts",
-    "Map": "maps",
-    "Day": "day",
-    "Overlaps": "overlaps",
-}
-
-
-def settings_form(settings, devices, config):
-    with st.sidebar.expander("Personal settings and source priorities"):
-        metric = st.selectbox(
-            "Priority metric",
-            [
-                "heart_rate",
-                "steps",
-                "distance",
-                "active_kcal",
-                "total_kcal",
-                "sleep_sessions",
-                "workouts",
-                "resting_heart_rate",
-                "weight",
-                "spo2",
-            ],
-        )
-        with st.form("settings"):
-            birth = st.number_input(
-                "Birth year (0 = unknown)",
-                min_value=0,
-                max_value=date.today().year,
-                value=settings.birth_year or 0,
-            )
-            maximum = st.number_input(
-                "Max HR (0 = derive)", min_value=0.0, value=float(settings.max_hr or 0)
-            )
-            threshold = st.number_input(
-                "HR sample-hours threshold",
-                min_value=1,
-                max_value=25,
-                value=settings.worn_hours_threshold,
-            )
-            timezone = st.text_input("Fallback timezone (IANA)", settings.default_timezone)
-            ids = devices.device_id.tolist()
-            order = st.multiselect(
-                "Preferred devices (selection order)",
-                ids,
-                default=settings.priority.get(metric, []),
-                key="priority-" + metric,
-            )
-            st.caption(
-                "Defaults: watches before phones; vendor exports before Health Connect. "
-                "Configure ingest order in the private TOML file."
-            )
-            origin = st.selectbox("Source to associate", ["None", *ids])
-            target = st.selectbox("Same physical device as", ["None", *ids])
-            st.caption(
-                "Associate only sources you know describe the same physical device; names "
-                "are not proof. Never guess the device of unattributed summaries."
-            )
-            submitted = st.form_submit_button("Save private settings")
-        if submitted:
-            aliases = dict(settings.device_aliases)
-            if origin != "None" and target != "None":
-                aliases[origin] = target
-            updated = replace(
-                settings,
-                birth_year=birth or None,
-                max_hr=maximum or None,
-                worn_hours_threshold=threshold,
-                default_timezone=timezone,
-                priority={**settings.priority, metric: order},
-                device_aliases=aliases,
-            )
-            updated.check_devices(set(ids))
-            save_settings(config, updated)
-            st.rerun()
 
 
 def app_filter(settings, choices, config):
@@ -100,9 +21,9 @@ def app_filter(settings, choices, config):
     if not choices:
         return
     current = [a for a in settings.apps if a in choices] or choices
-    chosen = st.sidebar.multiselect("Apps", choices, default=current)
+    chosen = st.multiselect("Apps", choices, default=current)
     if not chosen:
-        st.sidebar.info("Choose at least one app.")
+        st.info("Choose at least one app.")
         return
     apps = [] if set(chosen) == set(choices) else chosen
     if apps != settings.apps and set(chosen) != set(current):
@@ -110,37 +31,66 @@ def app_filter(settings, choices, config):
         st.rerun()
 
 
-def import_status(path):
-    status = load_status(path)
-    if status is None:
-        return
-    folder = f" from {status.folder}" if status.folder else ""
-    if status.error:
-        st.sidebar.error(f"Health Connect import failed{folder}: {status.error}")
-    elif status.zip_name:
-        st.sidebar.caption(
-            f"Health Connect: {status.zip_name}{folder}, imported {status.imported_at}"
-        )
-    last = status.last_success or {}
-    if status.error and last:
-        st.sidebar.caption(
-            f"Last successful import: {last.get('zip_name')} at {last.get('imported_at')}"
-        )
-    if not status.format_tested and status.format_version is not None:
-        st.sidebar.warning(f"Health Connect export format {status.format_version} not yet tested")
-    if status.not_imported:
-        listed = ", ".join(
-            f"{name.replace('_', ' ')}: {count}" for name, count in status.not_imported.items()
-        )
-        st.sidebar.caption(f"Not imported (no archive table yet): {listed}")
-    if status.skipped:
-        listed = ", ".join(f"{name}: {count}" for name, count in status.skipped.items())
-        st.sidebar.caption(f"Skipped invalid or implausible records: {listed}")
-
-
 def clear_snapshot_context():
-    for key in ("snapshot", "overview_sources", "tracks", "resolved_hr", "heatmap", "app_choices"):
+    for key in (
+        "snapshot",
+        "overview_sources",
+        "tracks",
+        "resolved_hr",
+        "heatmap",
+        "app_choices",
+        "device_names",
+        "duplicates",
+    ):
         st.session_state.pop(key, None)
+
+
+PRESETS = {"7d": 7, "30d": 30, "90d": 90, "1y": 365, "All": None, "Custom": None}
+
+
+def keep_navigation_state(daily):
+    """Pages without the period bar must not reset it: Streamlit drops unrendered widget state."""
+    first, last = daily.date_local.min(), daily.date_local.max()
+    state = st.session_state
+    state.setdefault("preset", "30d")
+    period = state.get("period")
+    if not period or len(period) != 2 or period[0] < first or period[1] > last:
+        state["period"] = (first, last)
+    for key in ("preset", "period"):
+        state[key] = state[key]
+
+
+def period_bar(daily):
+    """Period shortcuts end at the last day with data; Custom opens a date range."""
+    first, last = daily.date_local.min(), daily.date_local.max()
+    preset = st.segmented_control("Period", list(PRESETS), key="preset") or "30d"
+    if preset == "All":
+        return first, last
+    if preset != "Custom":
+        return last - timedelta(days=PRESETS[preset] - 1), last
+    dates = st.date_input(
+        "Custom period", key="period", format="YYYY-MM-DD", min_value=first, max_value=last
+    )
+    if len(dates) != 2:
+        st.info("Choose the start and end dates.")
+        return None
+    return dates
+
+
+def top_bar(daily, settings, choices, config):
+    """Period and apps apply to every page; the header says how fresh the data is."""
+    left, right = st.columns([3, 2])
+    with left:
+        period = period_bar(daily)
+    with right:
+        app_filter(settings, choices, config)
+    if period is not None:
+        status = import_line(config.parent / STATUS_FILE, settings.default_timezone)
+        st.caption(
+            f"{day_text(period[0])} – {day_text(period[1])} · data up to "
+            f"{day_text(daily.date_local.max())}{status}"
+        )
+    return period
 
 
 def main():
@@ -154,11 +104,6 @@ def main():
     args = parser.parse_args()
     st.set_page_config(page_title="Open Health Archive", layout="wide")
     st.set_option("client.showErrorDetails", "none")
-    st.title("Open Health Archive")
-    st.caption(
-        "Local, vendor-neutral history · Not a medical device. No diagnosis or "
-        "medical advice. Cloud providers can read plaintext archives."
-    )
     settings = load_settings(args.config)
     archive = args.archive or (Path(settings.archive_dir) if settings.archive_dir else None)
     if archive is None:
@@ -200,10 +145,14 @@ def main():
     _, tables, daily = st.session_state["snapshot"]
     if tables["devices"].vendor.fillna("").eq("Fictional").all() and not tables["devices"].empty:
         st.info("Synthetic demonstration archive — not personal measurements.")
-    settings_form(settings, tables["devices"], args.config)
-    app_filter(settings, st.session_state["app_choices"], args.config)
-    import_status(args.config.parent / STATUS_FILE)
-    page = st.sidebar.selectbox("Page", list(PAGES), key="page")
+    st.sidebar.title("Open Health Archive")
+    page = st.sidebar.radio(
+        "Page", list(PAGES), key="page", on_change=lambda: st.session_state.pop("view", None)
+    )
+    st.sidebar.caption(
+        "Local, vendor-neutral history · Not a medical device. No diagnosis or medical advice. "
+        "Cloud providers can read plaintext archives."
+    )
     st.sidebar.caption(
         "Offline: no basemap requests"
         if args.offline
@@ -212,21 +161,20 @@ def main():
     if daily.empty:
         st.info("Archive has no observations.")
         return
-    dates = st.sidebar.date_input(
-        "Period",
-        format="YYYY-MM-DD",
-        value=(daily.date_local.min(), daily.date_local.max()),
-        min_value=daily.date_local.min(),
-        max_value=daily.date_local.max(),
-    )
-    if len(dates) != 2:
-        st.info("Choose the start and end dates.")
-        return
-    start, end = dates
-    module = importlib.import_module("healthviz.dashboard." + PAGES[page])
-    st.header(page)
-    kwargs = {"archive": archive, "offline": args.offline} if page in ("Workouts", "Map") else {}
-    module.render(tables, daily, settings, start=start, end=end, **kwargs)
+    keep_navigation_state(daily)
+    start, end = daily.date_local.min(), daily.date_local.max()
+    if page != "Settings":
+        period = top_bar(daily, settings, st.session_state["app_choices"], args.config)
+        if period is None:
+            return
+        start, end = period
+    context = PageContext(tables, daily, settings, start, end, archive, args.offline, args.config)
+    view = st.session_state.get("view") if page != "Settings" else None
+    name = "day" if view == "Day" else PAGES[page]
+    st.header("Day" if view == "Day" else page)
+    if page == "Overview" and view is None:
+        duplicate_notice(context)
+    importlib.import_module("healthviz.dashboard." + name).render(context)
 
 
 if __name__ == "__main__":

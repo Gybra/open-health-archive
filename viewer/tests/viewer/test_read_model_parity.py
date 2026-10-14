@@ -4,12 +4,13 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from dashboard_nav import activity_view, open_page, set_period
 from streamlit.testing.v1 import AppTest
 from viewer_archive import write_viewer_archive
 
 import healthviz
 from healthviz import read_model
-from healthviz.dashboard.app import PAGES
+from healthviz.dashboard.context import PAGES
 
 APP = str(Path(healthviz.__file__).parent / "dashboard/app.py")
 
@@ -43,15 +44,17 @@ def tour(app):
     first, last = daily.date_local.min(), daily.date_local.max()
     views = []
     for period in [(first, last), (first, first + (last - first) / 2)]:
-        app.date_input[0].set_value(period).run()
+        set_period(app, *period)
         for page in PAGES:
-            app.selectbox(key="page").set_value(page).run()
+            open_page(app, page)
             views.append((page, period, rendered(app)))
-            if page == "Map":
-                selector = next(m for m in app.multiselect if m.label == "Activity types")
-                selector.set_value([]).run()
-                views.append(("Map filtered", period, rendered(app)))
-                selector.set_value(selector.options).run()
+        for view in ("Daily", "Workouts", "Routes"):
+            activity_view(app, view)
+            views.append((view, period, rendered(app)))
+        selector = next(m for m in app.multiselect if m.label == "Activity types")
+        selector.set_value([]).run()
+        views.append(("Routes filtered", period, rendered(app)))
+        selector.set_value(selector.options).run()
     return views
 
 

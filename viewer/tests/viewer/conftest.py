@@ -2,6 +2,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from dashboard_nav import show_all
 from streamlit.testing.v1 import AppTest
 from viewer_archive import write_viewer_archive
 
@@ -18,4 +19,5 @@ def viewer_app(tmp_path, monkeypatch):
         "argv",
         ["app.py", "--archive", str(root), "--config", str(tmp_path / "config.toml"), "--offline"],
     )
-    return AppTest.from_file(str(app), default_timeout=30).run()
+    # The fixture spans ten months; most tests look at all of it.
+    return show_all(AppTest.from_file(str(app), default_timeout=30).run())

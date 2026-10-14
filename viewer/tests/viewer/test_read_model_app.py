@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
+from dashboard_nav import set_period
 from streamlit.testing.v1 import AppTest
 from viewer_archive import write_viewer_archive
 
@@ -45,7 +46,7 @@ def test_new_session_uses_persisted_overview_without_startup_analysis(prepared_a
             patch.object(read_model, "load_archive", side_effect=AssertionError("reparsed")),
             patch.object(read_model, "daily_summary", side_effect=AssertionError("recomputed")),
             patch(
-                "healthviz.dashboard.overview.resolve_rows", side_effect=AssertionError("resolved")
+                "healthviz.dashboard.context.resolve_rows", side_effect=AssertionError("resolved")
             ),
         ):
             second = AppTest.from_file(path, default_timeout=30).run()
@@ -114,6 +115,6 @@ def test_settings_and_historical_period_remain_dynamic(prepared_app):
     assert not app.exception and not app.error
     daily = app.session_state["snapshot"][2]
     assert not daily.complete.any()
-    app.date_input[0].set_value((daily.date_local.min(), daily.date_local.min())).run()
+    set_period(app, daily.date_local.min(), daily.date_local.min())
     assert not app.exception and not app.error
     assert len(app.session_state["snapshot"][2]) > 1, "filter must retain full baseline history"

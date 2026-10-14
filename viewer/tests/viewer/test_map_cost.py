@@ -1,5 +1,7 @@
 import threading
 
+from dashboard_nav import activity_view
+
 
 def test_heatmap_does_not_calculate_workout_pace(viewer_app):
     calls = []
@@ -11,7 +13,7 @@ def test_heatmap_does_not_calculate_workout_pace(viewer_app):
 
     try:
         threading.setprofile(record)
-        viewer_app.selectbox(key="page").select("Map").run()
+        activity_view(viewer_app, "Routes")
     finally:
         threading.setprofile(previous)
     assert not viewer_app.error
@@ -19,7 +21,7 @@ def test_heatmap_does_not_calculate_workout_pace(viewer_app):
 
 
 def test_heatmap_rerun_reuses_density(viewer_app):
-    viewer_app.selectbox(key="page").select("Map").run()
+    activity_view(viewer_app, "Routes")
     calls = []
     previous = threading.getprofile()
 
@@ -37,7 +39,7 @@ def test_heatmap_rerun_reuses_density(viewer_app):
 
 
 def test_heatmap_filter_does_not_show_previous_geometry(viewer_app):
-    viewer_app.selectbox(key="page").select("Map").run()
+    activity_view(viewer_app, "Routes")
     types = next(control for control in viewer_app.multiselect if control.label == "Activity types")
     types.set_value([])
     viewer_app.run()

@@ -1,10 +1,12 @@
 from datetime import date
 
 import pandas as pd
+from dashboard_nav import open_day, open_page
 from streamlit.testing.v1 import AppTest
 
 
 def test_period_input_is_iso(viewer_app):
+    viewer_app.segmented_control(key="preset").set_value("Custom").run()
     assert viewer_app.date_input[0].proto.format == "YYYY-MM-DD"
 
 
@@ -19,7 +21,7 @@ def test_day_calorie_kinds_have_separate_traces(viewer_app, tmp_path):
         "kcal": "4",
     }
     write_viewer_archive(tmp_path / "archive", calories=[*FIXTURE_TABLES["calories"], row])
-    viewer_app.selectbox(key="page").set_value("Day").run()
+    open_day(viewer_app, date(2026, 1, 3))
     widget = next(w for w in viewer_app.selectbox if w.label == "Day")
     widget.set_value(date(2026, 1, 3)).run()
     import json
@@ -33,7 +35,7 @@ def test_day_calorie_kinds_have_separate_traces(viewer_app, tmp_path):
 
 
 def test_ambiguous_single_source_is_inspectable(viewer_app):
-    viewer_app.selectbox(key="page").set_value("Overlaps").run()
+    open_page(viewer_app, "Settings")
     widget = next(w for w in viewer_app.selectbox if w.label == "Metric")
     widget.set_value("workouts").run()
     assert any(
@@ -47,7 +49,7 @@ def test_priority_metric_updates_before_form_submission(tmp_path):
     app = AppTest.from_string("""
 import pandas as pd
 from pathlib import Path
-from healthviz.dashboard.app import settings_form
+from healthviz.dashboard.settings_page import settings_form
 from healthviz.settings import Settings
 settings_form(Settings(priority={"heart_rate":["a"],"steps":["b"]}),
     pd.DataFrame({"device_id":["a","b"]}), Path("/tmp/unused-viewer-qa-config"))

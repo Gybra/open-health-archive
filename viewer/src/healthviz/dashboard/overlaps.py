@@ -4,7 +4,9 @@ from healthviz.analysis.sources import resolve_rows
 from healthviz.dashboard.charts import filtered, summary_table
 
 
-def render(tables, daily, settings, *, start, end):
+def render(context):
+    tables, settings = context.tables, context.settings
+    start, end = context.start, context.end
     metric = st.selectbox(
         "Metric",
         [

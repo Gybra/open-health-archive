@@ -1,19 +1,19 @@
 import importlib
 
 import pytest
+from dashboard_nav import activity_view
 
 
-@pytest.mark.parametrize("page", ["Workouts", "Map"])
-def test_all_seven_pages_render(viewer_app, page):
-    assert importlib.util.find_spec("healthviz.dashboard.workouts"), "workout page is missing"
-    viewer_app.selectbox(key="page").set_value(page).run()
+@pytest.mark.parametrize("view", ["Workouts", "Routes"])
+def test_activity_views_render(viewer_app, view):
+    activity_view(viewer_app, view)
     assert not viewer_app.exception
     assert not viewer_app.error
 
 
 def test_no_gps_no_elevation_no_profile(viewer_app):
     assert importlib.util.find_spec("healthviz.dashboard.workouts"), "workout page is missing"
-    viewer_app.selectbox(key="page").set_value("Workouts").run()
+    activity_view(viewer_app, "Workouts")
     assert not viewer_app.error
     widget = next(w for w in viewer_app.selectbox if w.label == "Workout")
     widget.select_index(0).run()
@@ -23,7 +23,7 @@ def test_no_gps_no_elevation_no_profile(viewer_app):
 
 def test_heatmap_uses_only_selected_workouts(viewer_app):
     assert importlib.util.find_spec("healthviz.dashboard.maps"), "map page is missing"
-    viewer_app.selectbox(key="page").set_value("Map").run()
+    activity_view(viewer_app, "Routes")
     assert not viewer_app.error
     type_filter = next(w for w in viewer_app.multiselect if w.label == "Activity types")
     type_filter.set_value(["strength_training"]).run()

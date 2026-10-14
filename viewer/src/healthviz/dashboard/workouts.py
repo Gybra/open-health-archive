@@ -68,7 +68,9 @@ def resolved_hr(tables, settings):
     return state[1]
 
 
-def render(tables, daily, settings, *, start, end, archive, offline):
+def render(context):
+    tables, settings, archive = context.tables, context.settings, context.archive
+    start, end, offline = context.start, context.end, context.offline
     workouts = workout_filter(tables, settings, start, end)
     summary_table(workouts, "Filtered workouts")
     if workouts.empty:

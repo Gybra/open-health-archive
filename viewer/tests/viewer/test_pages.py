@@ -3,11 +3,18 @@ from datetime import date
 
 import pandas as pd
 import pytest
+from dashboard_nav import PAGE_NAMES, open_day, open_page
 
 
-@pytest.mark.parametrize("page", ["Overview", "Sleep", "Activity & calories", "Day", "Overlaps"])
-def test_non_map_pages_render(viewer_app, page):
-    viewer_app.selectbox(key="page").set_value(page).run()
+@pytest.mark.parametrize("page", PAGE_NAMES)
+def test_pages_render(viewer_app, page):
+    open_page(viewer_app, page)
+    assert not viewer_app.exception
+    assert not viewer_app.error
+
+
+def test_day_view_renders(viewer_app):
+    open_day(viewer_app, date(2026, 1, 3))
     assert not viewer_app.exception
     assert not viewer_app.error
 

@@ -1,6 +1,9 @@
 """Readable values: ISO dates with weekday, 24-hour clock, metric units."""
 
 from datetime import date
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+import pandas as pd
 
 from healthviz.analysis.usual import Comparison
 
@@ -50,3 +53,11 @@ def measured_text(result: Comparison, noun: str) -> str:
     if not result.counted:
         return f"no readings in this period{latest}"
     return f"{result.counted} days with readings{latest}"
+
+
+def stamp_text(iso_utc: str | None, timezone: str) -> str:
+    """A UTC timestamp from a status file, shown on the local clock."""
+    try:
+        return f"{pd.Timestamp(iso_utc).tz_convert(ZoneInfo(timezone)):%Y-%m-%d %H:%M}"
+    except (TypeError, ValueError, ZoneInfoNotFoundError):
+        return str(iso_utc)

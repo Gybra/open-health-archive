@@ -8,7 +8,9 @@ from healthviz.dashboard.charts import summary_table
 from healthviz.dashboard.workouts import cached_tracks, workout_filter
 
 
-def render(tables, daily, settings, *, start, end, archive, offline):
+def render(context):
+    tables, settings, archive = context.tables, context.settings, context.archive
+    start, end, offline = context.start, context.end, context.offline
     workouts = workout_filter(tables, settings, start, end)
     reliable = workouts.loc[workouts.quality != "ambiguous"].copy()
     if len(reliable) != len(workouts):

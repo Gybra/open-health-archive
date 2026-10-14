@@ -14,7 +14,14 @@ from healthviz.dashboard.charts import (
 )
 
 
-def render(tables, daily, settings, *, start, end):
+def render(context):
+    tables, daily, settings, start, end = (
+        context.tables,
+        context.daily,
+        context.settings,
+        context.start,
+        context.end,
+    )
     show_trend(daily, "sleep_min", "Main sleep duration", "min", start=start, end=end)
     sessions, _ = resolve_rows(
         "sleep_sessions", tables["sleep_sessions"], tables["devices"], settings
