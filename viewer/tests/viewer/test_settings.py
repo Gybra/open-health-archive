@@ -48,3 +48,16 @@ def test_settings_roundtrip_and_validation(tmp_path):
     with pytest.raises(mod.SettingsError) as error:
         mod.load_settings(path)
     assert "PRIVATE-SENTINEL" not in str(error.value)
+
+
+def test_not_same_devices_round_trip_and_validation(tmp_path):
+    mod = settings()
+    path = tmp_path / "config.toml"
+    value = mod.Settings(not_same_devices=[["a", "b"], ["b", "c"]])
+    mod.save_settings(path, value)
+    assert mod.load_settings(path) == value
+    with pytest.raises(mod.SettingsError):
+        value.check_devices({"a", "b"})
+    for pairs in [[["b", "a"]], [["a", "a"]], [["a"]], [["a", "b"], ["a", "b"]], [["a", ""]]]:
+        with pytest.raises(mod.SettingsError):
+            mod.Settings(not_same_devices=pairs).validate()

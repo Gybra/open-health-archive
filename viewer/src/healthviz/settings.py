@@ -27,6 +27,8 @@ class Settings:
     device_aliases: dict[str, str] = field(default_factory=dict)
     # Dashboard app filter by readable label; empty means every app.
     apps: list[str] = field(default_factory=list)
+    # Sorted device_id pairs the owner said are not one physical device.
+    not_same_devices: list[list[str]] = field(default_factory=list)
 
     def validate(self) -> None:
         try:
@@ -82,6 +84,17 @@ class Settings:
                 or len(set(self.apps)) != len(self.apps)
             ):
                 raise ValueError
+            pairs = self.not_same_devices
+            if not isinstance(pairs, list) or any(
+                not isinstance(p, list)
+                or len(p) != 2
+                or any(not isinstance(v, str) or not v for v in p)
+                or p[0] >= p[1]
+                for p in pairs
+            ):
+                raise ValueError
+            if len({tuple(p) for p in pairs}) != len(pairs):
+                raise ValueError
         except (ValueError, TypeError, ZoneInfoNotFoundError):
             raise SettingsError(
                 "config: invalid profile, threshold, timezone or source priority"
@@ -93,6 +106,7 @@ class Settings:
             set(self.device_aliases) | set(self.device_aliases.values()) | set(self.ingest_priority)
         )
         references.update(v for values in self.priority.values() for v in values)
+        references.update(v for pair in self.not_same_devices for v in pair)
         if not references.issubset(ids):
             raise SettingsError("config: source settings reference an unknown device")
 
@@ -131,6 +145,8 @@ def save_settings(path: Path, settings: Settings) -> None:
         lines.append(f"archive_dir = {quote(settings.archive_dir)}")
     if settings.apps:
         lines.append(f"apps = {quote(settings.apps)}")
+    if settings.not_same_devices:
+        lines.append(f"not_same_devices = {quote(settings.not_same_devices)}")
     lines.append("\n[profile]")
     for key in ("birth_year", "max_hr"):
         value = getattr(settings, key)
