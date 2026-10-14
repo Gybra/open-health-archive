@@ -61,6 +61,8 @@ def render(context):
     with columns[-1]:
         weekly = compare_weekly_total(daily, "workout_min", start, end)
         show_number("Workout time per week", weekly, minutes_text, minutes_text)
+    # Highlight "Daily" until another view is picked.
+    st.session_state.setdefault("activity_view", "Daily")
     view = st.segmented_control("Show", ["Daily", "Workouts", "Routes"], key="activity_view")
     if view == "Workouts":
         workouts.render(context)

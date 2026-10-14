@@ -16,6 +16,7 @@ def test_activity_key_numbers_and_daily_view(tmp_path, monkeypatch):
     assert not app.exception and not app.error
     steps = next(m for m in app.metric if m.label == "Steps per day")
     assert (steps.value, steps.delta) == (count_text(9000), f"▲ {count_text(1000)} vs usual")
+    assert app.segmented_control(key="activity_view").value == "Daily"
     assert [t.label for t in app.tabs] == ["Steps", "Distance", "Active energy", "Total energy"]
     assert any("never added" in c.value for c in app.caption)
     assert [e.label for e in app.expander] == ["Raw data and sources"]
