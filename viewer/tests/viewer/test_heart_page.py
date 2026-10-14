@@ -58,3 +58,20 @@ def test_coverage_figure_marks_complete_day_threshold():
     figure = coverage_figure(days(5), LAST - timedelta(days=4), LAST, 10)
     assert figure.data[0].type == "bar"
     assert list(figure.data[1].y) == [10, 10]
+
+
+def test_raw_data_is_built_only_when_opened(tmp_path, monkeypatch):
+    from dashboard_nav import open_raw_data
+
+    app = heart_page(tmp_path, monkeypatch)
+    (raw,) = app.expander
+    assert not raw.get("dataframe") and not raw.get("download_button")
+    open_raw_data(app)
+    (raw,) = app.expander
+    assert [s.value for s in raw.subheader] == [
+        "Daily heart values",
+        "Heart rate source overlaps",
+        "Resting heart rate source overlaps",
+        "Blood oxygen source overlaps",
+    ]
+    assert len(raw.get("download_button")) == 4

@@ -42,7 +42,7 @@ def daily_view(context, results):
     day_picker(context, "activity")
     notes(activity_observations(daily, derived(context)[1], end))
     raw_data(
-        {
+        lambda: {
             "Activity weekly totals": period_summary(filtered(daily, start, end), "week"),
             "Steps source overlaps": overlap_audit(context, "steps"),
             "Distance source overlaps": overlap_audit(context, "distance"),

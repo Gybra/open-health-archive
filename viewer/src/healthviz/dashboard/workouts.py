@@ -279,13 +279,15 @@ def render(context):
         return
     st.dataframe(workout_list(workouts, device_names(context)), hide_index=True)
     frames = workout_detail(context, pick_workout(workouts))
-    per_workout, by_type = calories(workouts)
-    raw_data(
-        {
+
+    def raw():
+        per_workout, by_type = calories(workouts)
+        return {
             "Filtered workouts": workouts,
             **frames,
             "Workout calories": per_workout,
             "Workout calories by type": by_type,
             "Workout source overlaps": overlap_audit(context, "workouts"),
         }
-    )
+
+    raw_data(raw)

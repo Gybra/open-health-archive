@@ -67,18 +67,22 @@ def render(context):
         ),
         hide_index=True,
     )
-    frames = {}
-    for period in ("week", "month"):
-        reliable["period"] = reliable.date_local.map(
-            lambda d, period=period: (
-                d - timedelta(days=d.weekday()) if period == "week" else d.replace(day=1)
+
+    def totals_by_period():
+        frames = {}
+        for period in ("week", "month"):
+            reliable["period"] = reliable.date_local.map(
+                lambda d, period=period: (
+                    d - timedelta(days=d.weekday()) if period == "week" else d.replace(day=1)
+                )
             )
-        )
-        frames[f"Route {period} totals by type"] = (
-            reliable.groupby(["period", "type"])[
-                ["distance_km", "recorded_minutes", "ascent_m", "descent_m"]
-            ]
-            .sum(min_count=1)
-            .reset_index()
-        )
-    raw_data(frames)
+            frames[f"Route {period} totals by type"] = (
+                reliable.groupby(["period", "type"])[
+                    ["distance_km", "recorded_minutes", "ascent_m", "descent_m"]
+                ]
+                .sum(min_count=1)
+                .reset_index()
+            )
+        return frames
+
+    raw_data(totals_by_period)

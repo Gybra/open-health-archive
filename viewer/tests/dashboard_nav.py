@@ -44,3 +44,9 @@ def open_day(app, day):
     app.session_state["view"] = "Day"
     app.session_state["day"] = day
     return app.run()
+
+
+def open_raw_data(app):
+    """Click "Raw data and sources": its tables are built only while it is open."""
+    app.session_state["raw-data"] = True
+    return app.run()

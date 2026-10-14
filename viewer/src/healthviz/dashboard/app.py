@@ -108,6 +108,7 @@ def menu(render):
         st.switch_page(pages[goto])
     if st.session_state.get("shown_page") != current.title:
         st.session_state.pop("view", None)
+        st.session_state.pop("raw-data", None)
     st.session_state["shown_page"] = current.title
     return current
 

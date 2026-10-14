@@ -49,5 +49,8 @@ def render(context):
     else:
         st.dataframe(readings_list(weights, device_names(context)), hide_index=True)
     raw_data(
-        {"Weight readings": weights, "Weight source overlaps": overlap_audit(context, "weight")}
+        lambda: {
+            "Weight readings": weights,
+            "Weight source overlaps": overlap_audit(context, "weight"),
+        }
     )

@@ -1,3 +1,5 @@
+from collections.abc import Callable
+
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
@@ -159,10 +161,16 @@ def clock_figure(nights) -> go.Figure:
     return compact(figure, "local time", height=300)
 
 
-def raw_data(frames: dict[str, pd.DataFrame]) -> None:
-    """The only place for UTC times, offsets and archive column names."""
-    with st.expander("Raw data and sources"):
-        for title, frame in frames.items():
+def raw_data(frames: Callable[[], dict[str, pd.DataFrame]]) -> None:
+    """The only place for UTC times, offsets and archive column names.
+
+    Tables, audits and CSV exports are built only while the section is open.
+    """
+    section = st.expander("Raw data and sources", key="raw-data", on_change="rerun")
+    if not section.open:
+        return
+    with section:
+        for title, frame in frames().items():
             summary_table(frame, title)
 
 

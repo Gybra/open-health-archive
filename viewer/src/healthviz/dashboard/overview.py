@@ -116,4 +116,4 @@ def render(context):
     st.info("What changed  \n" + "  \n".join(f"- {line}" for line in changes(candidates)))
     for area, area_numbers in numbers.items():
         section(context, area, area_numbers)
-    raw_data({"Daily overview": filtered(context.daily, context.start, context.end)})
+    raw_data(lambda: {"Daily overview": filtered(context.daily, context.start, context.end)})

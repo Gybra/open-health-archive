@@ -116,4 +116,4 @@ def render(context):
     if not done.empty:
         st.subheader("Workouts")
         st.dataframe(workout_list(done, device_names(context)), hide_index=True)
-    raw_data({"Selected day": row, **frames, "Day workouts": done})
+    raw_data(lambda: {"Selected day": row, **frames, "Day workouts": done})

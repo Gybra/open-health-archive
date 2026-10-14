@@ -65,7 +65,7 @@ def render(context):
     notes(heart_observations(daily, end))
     resting_columns = [c for c in period.columns if c.startswith(("resting_hr", "spo2"))]
     raw_data(
-        {
+        lambda: {
             "Daily heart values": period[COLUMNS + resting_columns],
             "Heart rate source overlaps": overlap_audit(context, "heart_rate"),
             "Resting heart rate source overlaps": overlap_audit(context, "resting_heart_rate"),

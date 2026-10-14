@@ -1,7 +1,7 @@
 from datetime import date
 
 import pandas as pd
-from dashboard_nav import activity_view, open_day
+from dashboard_nav import activity_view, open_day, open_raw_data
 from streamlit.testing.v1 import AppTest
 
 
@@ -34,7 +34,7 @@ def test_day_calorie_kinds_have_separate_traces(viewer_app, tmp_path):
 
 
 def test_ambiguous_single_source_is_inspectable(viewer_app):
-    activity_view(viewer_app, "Workouts")
+    open_raw_data(activity_view(viewer_app, "Workouts"))
     assert any(
         "ambiguous" in frame.value.get("quality", pd.Series(dtype=str)).tolist()
         for frame in viewer_app.dataframe

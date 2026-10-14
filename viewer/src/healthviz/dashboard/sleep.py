@@ -119,7 +119,7 @@ def render(context):
     notes(sleep_observations(daily, nights, end))
     period = filtered(daily, start, end)
     raw_data(
-        {
+        lambda: {
             "Sleep sessions and naps": filtered(nights, start, end),
             "Sleep week summaries": period_summary(period, "week"),
             "Sleep month summaries": period_summary(period, "month"),
