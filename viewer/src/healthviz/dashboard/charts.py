@@ -22,73 +22,6 @@ def filtered(frame, start, end):
     )
 
 
-def trend(
-    frame: pd.DataFrame, metric: str, title: str, unit: str, *, start=None, end=None
-) -> go.Figure:
-    figure = go.Figure()
-    if frame.empty:
-        figure.update_layout(title=title, yaxis_title=unit)
-        return figure
-    frame = frame.sort_values("date_local")
-    visible = pd.Series(True, index=frame.index)
-    if start is not None:
-        visible &= frame.date_local >= start
-    if end is not None:
-        visible &= frame.date_local <= end
-    eligible = frame.sleep_eligible if metric == "sleep_min" else frame.complete
-    value = pd.to_numeric(frame[metric]).where(eligible)
-    dates = frame.loc[visible, "date_local"]
-    figure.add_trace(
-        go.Scatter(
-            x=dates, y=value.loc[visible], name="Daily", mode="lines+markers", connectgaps=False
-        )
-    )
-    partial = frame.loc[visible & ~eligible & frame[metric].notna()]
-    figure.add_trace(
-        go.Scatter(
-            x=partial.date_local,
-            y=partial[metric],
-            name="Incomplete · excluded",
-            mode="markers",
-            marker={"color": "#888", "symbol": "x"},
-        )
-    )
-    indexed = pd.Series(value.to_numpy(), index=pd.to_datetime(frame.date_local))
-    for window, minimum in [(7, 4), (30, 15)]:
-        # The viewport must not change a historical calendar-window statistic.
-        mean = indexed.rolling(f"{window}D", min_periods=minimum).mean().where(eligible.to_numpy())
-        figure.add_trace(
-            go.Scatter(
-                x=dates,
-                y=mean.iloc[visible.to_numpy()],
-                name=f"{window}-day mean",
-                connectgaps=False,
-            )
-        )
-    source_cols = [f"{metric}_physical_device_id", f"{metric}_computed_by"]
-    if set(source_cols).issubset(frame.columns):
-        previous = None
-        for row in frame.loc[frame[metric].notna()].to_dict("records"):
-            key = tuple(row[c] for c in source_cols)
-            in_range = (start is None or row["date_local"] >= start) and (
-                end is None or row["date_local"] <= end
-            )
-            if previous is not None and key != previous and in_range:
-                figure.add_vline(
-                    x=row["date_local"].isoformat(), line_dash="dash", line_color="#777"
-                )
-            previous = key
-    figure.update_layout(
-        title=title,
-        xaxis_title="Local date",
-        xaxis_tickformat="%Y-%m-%d",
-        yaxis_title=unit,
-        legend={"orientation": "h"},
-        height=340,
-    )
-    return figure
-
-
 def counted(daily, metric):
     """Days that enter averages: eligible nights, complete days, or any day for readings."""
     if metric == "sleep_min":
@@ -295,36 +228,6 @@ def summary_table(frame: pd.DataFrame, title: str) -> None:
         mime="text/csv",
         key="csv-" + title,
     )
-
-
-def show_trend(frame, metric, title, unit, *, start=None, end=None):
-    st.plotly_chart(
-        trend(frame, metric, title, unit, start=start, end=end),
-        width="stretch",
-        key="trend-" + metric,
-    )
-
-
-def select_record(frame, label):
-    records = {(row["ingest"], row["record_id"]): row for row in frame.to_dict("records")}
-
-    def readable(key):
-        row = records[key]
-        local = row["start_utc"] + pd.Timedelta(minutes=parse_offset(row["utc_offset"]))
-        return f"{local:%Y-%m-%d %H:%M} · {row.get('type', 'sleep')} · {row['ingest']}"
-
-    key = st.selectbox(label, list(records), format_func=readable)
-    return pd.Series(records[key])
-
-
-def calendar_bars(frame, title, unit):
-    figure = go.Figure()
-    for column in frame:
-        figure.add_bar(x=frame.index, y=frame[column], name=column)
-    figure.update_layout(
-        title=title, xaxis_tickformat="%Y-%m-%d", yaxis_title=unit, barmode="stack", height=300
-    )
-    st.plotly_chart(figure, width="stretch")
 
 
 def local_times(frame):

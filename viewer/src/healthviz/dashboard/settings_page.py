@@ -7,7 +7,6 @@ import pandas as pd
 import streamlit as st
 
 from healthviz.analysis.devices import suggest_duplicates
-from healthviz.dashboard import overlaps
 from healthviz.dashboard.context import device_names, open_page, per_snapshot
 from healthviz.dashboard.format import stamp_text
 from healthviz.health_connect.status import load_status
@@ -186,5 +185,3 @@ def render(context):
     settings_form(context.settings, devices, context.config, names)
     st.subheader("Health Connect import")
     import_status(context.config.parent / STATUS_FILE, context.settings.default_timezone)
-    st.subheader("Source overlaps")
-    overlaps.render(context)

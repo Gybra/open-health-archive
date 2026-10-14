@@ -70,3 +70,11 @@ def test_missing_nights_are_blank_rows_after_the_measured_columns():
     assert list(frame.columns)[:3] == ["Night", "Asleep", "From → to"]
     assert list(frame["Note"]) == ["", "not measured"]
     assert not frame.isna().any().any()
+
+
+def test_selected_night_opens_its_day(tmp_path, monkeypatch):
+    app = sleep_page(tmp_path, monkeypatch)
+    next(b for b in app.button if b.label == "Open this day →").click().run()
+    assert app.session_state["view"] == "Day"
+    assert any(s.value == day_text(LAST) for s in app.subheader)
+    assert not app.exception and not app.error

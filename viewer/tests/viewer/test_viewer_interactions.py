@@ -1,7 +1,7 @@
 from datetime import date
 
 import pandas as pd
-from dashboard_nav import open_day, open_page
+from dashboard_nav import activity_view, open_day
 from streamlit.testing.v1 import AppTest
 
 
@@ -22,22 +22,19 @@ def test_day_calorie_kinds_have_separate_traces(viewer_app, tmp_path):
     }
     write_viewer_archive(tmp_path / "archive", calories=[*FIXTURE_TABLES["calories"], row])
     open_day(viewer_app, date(2026, 1, 3))
-    widget = next(w for w in viewer_app.selectbox if w.label == "Day")
-    widget.set_value(date(2026, 1, 3)).run()
     import json
 
     chart = next(
         x
         for x in viewer_app.get("plotly_chart")
-        if json.loads(x.proto.spec)["layout"]["title"]["text"] == "Calories"
+        if json.loads(x.proto.spec)["layout"]["title"]["text"] == "Energy per hour"
     )
-    assert [row["name"] for row in json.loads(chart.proto.spec)["data"]] == ["active", "total"]
+    names = [row["name"] for row in json.loads(chart.proto.spec)["data"]]
+    assert names == ["Active energy", "Total energy"]
 
 
 def test_ambiguous_single_source_is_inspectable(viewer_app):
-    open_page(viewer_app, "Settings")
-    widget = next(w for w in viewer_app.selectbox if w.label == "Metric")
-    widget.set_value("workouts").run()
+    activity_view(viewer_app, "Workouts")
     assert any(
         "ambiguous" in frame.value.get("quality", pd.Series(dtype=str)).tolist()
         for frame in viewer_app.dataframe

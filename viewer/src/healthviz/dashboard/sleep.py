@@ -63,6 +63,7 @@ def selected_night(main, stages):
         f"{duration(night.sleep_min)} asleep"
     )
     hypnogram({**night.to_dict(), "date_local": day}, stages)
+    st.button("Open this day →", on_click=open_page, args=("Day",), kwargs={"day": day})
 
 
 def nights_list(main, start, end, names) -> pd.DataFrame:

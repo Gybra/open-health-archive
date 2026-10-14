@@ -12,7 +12,7 @@ from healthviz.analysis.daily import daily_summary, period_summary
 from healthviz.analysis.gps import map_deck, route_profile
 from healthviz.analysis.observations import observations
 from healthviz.archive.reader import ArchiveReadError, archive_token, load_archive
-from healthviz.dashboard.charts import trend
+from healthviz.dashboard.charts import daily_figure
 from healthviz.settings import Settings
 
 
@@ -180,21 +180,19 @@ def test_source_change_blocks_movement_and_sleep_comparisons():
 
 
 def test_selector_uses_composite_record_identity():
-    import healthviz.dashboard.charts as charts
-
-    assert hasattr(charts, "select_record"), "composite detail selection is missing"
     app = AppTest.from_string("""
 import pandas as pd
 import streamlit as st
-from healthviz.dashboard.charts import select_record
+from healthviz.dashboard.workouts import pick_workout
 frame=pd.DataFrame([
     {'device_id':'a','ingest':ingest,'record_id':record,'workout_id':'same',
-     'type':'walking','date_local':'2026-01-01',
-     'start_utc':pd.Timestamp('2026-01-01',tz='UTC'),'utc_offset':'+01:00'}
-    for ingest,record in [('vendor','one'),('health_connect','two')]
+     'type':'walking','distance_m':None,'utc_offset':'+01:00',
+     'start_utc':pd.Timestamp('2026-01-01',tz='UTC')}
+    for ingest,record in [('xiaomi_export','one'),('health_connect','two')]
 ])
-st.write(select_record(frame,'Workout')['record_id'])
+st.write(pick_workout(frame)['record_id'])
 """).run()
+    assert app.selectbox[0].options[0] != app.selectbox[0].options[1]
     app.selectbox[0].select_index(1).run()
     assert app.markdown[-1].value == "two"
 
@@ -247,8 +245,8 @@ def test_missing_ascent_attribution_does_not_break_detail(viewer_app, tmp_path):
 def test_rolling_means_keep_history_outside_viewport():
     dates = pd.date_range("2026-01-01", periods=8).date
     frame = pd.DataFrame({"date_local": dates, "steps": [100] * 8, "complete": [True] * 8})
-    figure = trend(frame, "steps", "Steps", "count", start=date(2026, 1, 8), end=date(2026, 1, 8))
-    assert figure.data[2].y[0] == 100
+    figure = daily_figure(frame, "steps", date(2026, 1, 8), date(2026, 1, 8), None, "steps")
+    assert figure.data[1].y[0] == 100
     assert len(figure.data[0].x) == 1
 
 

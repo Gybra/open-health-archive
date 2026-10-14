@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from healthviz.analysis.devices import INGESTS
 from healthviz.analysis.gps import map_deck, parse_track, route_profile
 from healthviz.analysis.heart import max_hr, zone_seconds
 from healthviz.analysis.sources import resolve_rows
@@ -13,7 +14,7 @@ from healthviz.archive.reader import ArchiveReadError, archive_token
 from healthviz.archive.validate import safe_track_path
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.charts import filtered, overlap_audit, raw_data
-from healthviz.dashboard.context import device_names
+from healthviz.dashboard.context import device_names, open_page
 from healthviz.dashboard.format import day_text, kcal, km, minutes_text, pace_text
 
 PACED = ("walking", "running", "hiking")
@@ -111,7 +112,9 @@ def workout_list(workouts, names) -> pd.DataFrame:
             "Active energy": "" if pd.isna(row["active_kcal"]) else kcal(row["active_kcal"]),
             "Source": names.get(row["device_id"], row["device_id"]),
         }
-        for row in workouts.sort_values("start_utc", ascending=False).to_dict("records")
+        for row in workouts.sort_values("start_utc", ascending=False, kind="stable").to_dict(
+            "records"
+        )
     ]
     columns = ["Date", "Start", "Type", "Duration", "Distance", "Pace", "Active energy", "Source"]
     return pd.DataFrame(rows, columns=columns)
@@ -120,14 +123,20 @@ def workout_list(workouts, names) -> pd.DataFrame:
 def pick_workout(workouts):
     records = {
         (row["ingest"], row["record_id"]): row
-        for row in workouts.sort_values("start_utc", ascending=False).to_dict("records")
+        for row in workouts.sort_values("start_utc", ascending=False, kind="stable").to_dict(
+            "records"
+        )
     }
 
     def readable(key):
         row = records[key]
         distance = "" if pd.isna(row["distance_m"]) else f" · {km(row['distance_m'])}"
         start = local(row, "start_utc")
-        return f"{day_text(start.date())} {start:%H:%M} · {type_label(row['type'])}{distance}"
+        origin = INGESTS.get(row["ingest"], row["ingest"])
+        return (
+            f"{day_text(start.date())} {start:%H:%M} · {type_label(row['type'])}{distance}"
+            f" · {origin}"
+        )
 
     key = st.selectbox("Workout", list(records), format_func=readable, key="workout")
     return pd.Series(records[key])
@@ -237,6 +246,9 @@ def workout_detail(context, workout) -> dict[str, pd.DataFrame]:
     start, end = local(workout, "start_utc"), local(workout, "end_utc")
     st.subheader(f"{type_label(workout.type)} · {day_text(start.date())} {start:%H:%M}–{end:%H:%M}")
     summary_numbers(workout)
+    st.button(
+        "Open this day →", on_click=open_page, args=("Day",), kwargs={"day": workout.date_local}
+    )
     samples, zones = heart_rate(context, workout)
     profile = route(context, workout, samples)
     frames = {"Workout detail": pd.DataFrame([workout]), "Heart rate zone durations": zones}

@@ -31,7 +31,6 @@ def test_filtered_exports_and_gaps():
             "steps_computed_by": ["device"] * 3,
         }
     )
-    fig = charts.trend(frame, "steps", "Steps", "count")
-    assert pd.isna(fig.data[0].y[1])
-    assert fig.data[0].connectgaps is False
-    assert len(fig.layout.shapes) == 1
+    fig = charts.daily_figure(frame, "steps", date(2026, 1, 1), date(2026, 1, 3), None, "steps")
+    assert pd.isna(fig.data[0].y[1])  # incomplete day is not drawn as a value
+    assert fig.data[1].connectgaps is False
