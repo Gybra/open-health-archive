@@ -169,7 +169,7 @@ def raw_data(frames: Callable[[], dict[str, pd.DataFrame]]) -> None:
     section = st.expander("Raw data and sources", key="raw-data", on_change="rerun")
     if not section.open:
         return
-    with section:
+    with section, st.spinner("Preparing raw data…", show_time=True):
         for title, frame in frames().items():
             summary_table(frame, title)
 

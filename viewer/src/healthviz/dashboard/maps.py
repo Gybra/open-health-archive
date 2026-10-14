@@ -21,21 +21,22 @@ def render(context):
     key = (st.session_state["snapshot"][0], frozenset(paths), offline)
     context = st.session_state.get("heatmap")
     if context is None or context[0] != key:
-        tracks = cached_tracks(archive, paths)
-        parts = []
-        for path, points in tracks.items():
-            if points is None or points.empty:
-                continue
-            profile = points.assign(route_segment=route_segments(points))
-            profile["route_segment"] = str(path) + ":" + profile.route_segment.astype(str)
-            parts.append(profile)
-        deck = (
-            map_deck(pd.concat(parts, ignore_index=True), offline=offline, coloring="density")
-            if parts
-            else None
-        )
-        context = (key, deck)
-        st.session_state["heatmap"] = context
+        with st.spinner("Drawing the map…", show_time=True):
+            tracks = cached_tracks(archive, paths)
+            parts = []
+            for path, points in tracks.items():
+                if points is None or points.empty:
+                    continue
+                profile = points.assign(route_segment=route_segments(points))
+                profile["route_segment"] = str(path) + ":" + profile.route_segment.astype(str)
+                parts.append(profile)
+            deck = (
+                map_deck(pd.concat(parts, ignore_index=True), offline=offline, coloring="density")
+                if parts
+                else None
+            )
+            context = (key, deck)
+            st.session_state["heatmap"] = context
     _, deck = context
     if deck is None:
         st.info("No valid tracks match these filters.")

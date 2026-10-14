@@ -282,7 +282,9 @@ def render(context):
         st.info("No workouts match these filters.")
         return
     st.dataframe(workout_list(workouts, device_names(context)), hide_index=True)
-    frames = workout_detail(context, pick_workout(workouts))
+    picked = pick_workout(workouts)
+    with st.spinner("Loading the workout…", show_time=True):
+        frames = workout_detail(context, picked)
 
     def raw():
         per_workout, by_type = calories(workouts)

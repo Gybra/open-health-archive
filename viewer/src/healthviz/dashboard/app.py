@@ -157,7 +157,7 @@ def main():
     key = (snapshot[0], settings)
     cache = st.session_state.get("snapshot")
     if cache is None or cache[0] != key:
-        with st.spinner("Validating archive and preparing local read model…"):
+        with st.spinner("Validating archive and preparing local read model…", show_time=True):
             if args.cache_dir is not None:
                 model = load_read_model(
                     archive, settings, cache_dir=args.cache_dir, config=args.config
@@ -213,7 +213,9 @@ def main():
     if page == "Overview" and view is None:
         duplicate_notice(context)
     shown.update(module="day" if view == "Day" else PAGES[page], context=context)
-    current.run()
+    # Streamlit shows a spinner only after half a second, so quick pages do not flicker.
+    with st.spinner(f"Loading {'Day' if view == 'Day' else page}…", show_time=True):
+        current.run()
 
 
 if __name__ == "__main__":
