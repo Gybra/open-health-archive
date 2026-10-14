@@ -141,7 +141,7 @@ def stages_figure(nights, usual_min) -> go.Figure:
             line={"color": USUAL, "dash": "dash"},
         )
     figure.update_layout(barmode="stack")
-    return compact(figure, "hours asleep", height=300)
+    return compact(figure, "hours in bed", height=300)
 
 
 def clock_figure(nights) -> go.Figure:

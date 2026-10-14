@@ -104,7 +104,10 @@ def render(context):
     eligible = main.loc[main.eligible.astype(bool)].sort_values("date_local")
     asleep = key_numbers(nights, eligible, start, end)
     st.plotly_chart(stages_figure(eligible, asleep.usual), width="stretch", key="sleep-stages")
-    st.caption("Recorded stages per night · nights not measured or incomplete are left out.")
+    st.caption(
+        "Recorded stages per night, awake on top · the dashed line is your usual time asleep · "
+        "nights not measured or incomplete are left out."
+    )
     timing, night = st.columns(2)
     with timing:
         st.plotly_chart(clock_figure(eligible), width="stretch", key="sleep-clock")

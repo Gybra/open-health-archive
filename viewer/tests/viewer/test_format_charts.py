@@ -91,6 +91,8 @@ def nights():
 def test_stages_figure_stacks_known_stages():
     figure = stages_figure(nights(), 400.0)
     assert figure.layout.barmode == "stack"
+    # Awake time sits on top of the stack, so the bars are time in bed, not time asleep.
+    assert figure.layout.yaxis.title.text == "hours in bed"
     assert [trace.name for trace in figure.data] == ["Deep", "Light", "REM", "Awake", "your usual"]
     assert figure.data[0].marker.color == "#1e40af"
     assert list(figure.data[2].y)[1] != list(figure.data[2].y)[1]  # missing REM stays missing
