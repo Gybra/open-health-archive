@@ -16,6 +16,7 @@ import duckdb
 import pandas as pd
 
 from healthviz import read_model_store as store
+from healthviz.analysis.apps import select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.analysis.sleep import sleep_summary
 from healthviz.analysis.sources import resolve_rows
@@ -168,15 +169,16 @@ def result(snapshot, frames):
 
 def derive(tables, settings):
     settings.check_devices(set(tables["devices"].device_id))
-    daily = daily_summary(tables, tables["devices"], settings)
+    chosen = select_apps(tables, settings.apps)
+    daily = daily_summary(chosen, tables["devices"], settings)
     sessions, _ = resolve_rows(
-        "sleep_sessions", tables["sleep_sessions"], tables["devices"], settings
+        "sleep_sessions", chosen["sleep_sessions"], tables["devices"], settings
     )
-    workouts, _ = resolve_rows("workouts", tables["workouts"], tables["devices"], settings)
+    workouts, _ = resolve_rows("workouts", chosen["workouts"], tables["devices"], settings)
     return {
         **tables,
         "derived_daily": daily,
-        "derived_sleep": sleep_summary(sessions, tables["sleep_stages"]),
+        "derived_sleep": sleep_summary(sessions, chosen["sleep_stages"]),
         "derived_workouts": workouts,
     }
 

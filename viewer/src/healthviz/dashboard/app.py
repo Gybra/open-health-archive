@@ -6,11 +6,14 @@ from pathlib import Path
 
 import streamlit as st
 
+from healthviz.analysis.apps import app_choices, select_apps
 from healthviz.analysis.daily import daily_summary
 from healthviz.archive.reader import ArchiveReadError, load_archive, verify_snapshot
+from healthviz.health_connect.status import load_status
 from healthviz.read_model import ReadModelError, load_read_model, validate_location
 from healthviz.settings import SettingsError, load_settings, save_settings
 
+STATUS_FILE = "health-connect-import.json"
 PAGES = {
     "Overview": "overview",
     "Sleep": "sleep",
@@ -92,8 +95,51 @@ def settings_form(settings, devices, config):
             st.rerun()
 
 
+def app_filter(settings, choices, config):
+    """One, several or all apps; saved like the other private settings."""
+    if not choices:
+        return
+    current = [a for a in settings.apps if a in choices] or choices
+    chosen = st.sidebar.multiselect("Apps", choices, default=current)
+    if not chosen:
+        st.sidebar.info("Choose at least one app.")
+        return
+    apps = [] if set(chosen) == set(choices) else chosen
+    if apps != settings.apps and set(chosen) != set(current):
+        save_settings(config, replace(settings, apps=apps))
+        st.rerun()
+
+
+def import_status(path):
+    status = load_status(path)
+    if status is None:
+        return
+    folder = f" from {status.folder}" if status.folder else ""
+    if status.error:
+        st.sidebar.error(f"Health Connect import failed{folder}: {status.error}")
+    elif status.zip_name:
+        st.sidebar.caption(
+            f"Health Connect: {status.zip_name}{folder}, imported {status.imported_at}"
+        )
+    last = status.last_success or {}
+    if status.error and last:
+        st.sidebar.caption(
+            f"Last successful import: {last.get('zip_name')} at {last.get('imported_at')}"
+        )
+    if not status.format_tested and status.format_version is not None:
+        st.sidebar.warning(f"Health Connect export format {status.format_version} not yet tested")
+    if status.not_imported:
+        listed = ", ".join(
+            f"{name.replace('_', ' ')}: {count}" for name, count in status.not_imported.items()
+        )
+        st.sidebar.caption(f"Not imported (no archive table yet): {listed}")
+    if status.skipped:
+        listed = ", ".join(f"{name}: {count}" for name, count in status.skipped.items())
+        st.sidebar.caption(f"Skipped invalid or implausible records: {listed}")
+
+
 def clear_snapshot_context():
-    for key in ("snapshot", "overview_sources", "tracks", "resolved_hr", "heatmap"):
+    for key in ("snapshot", "overview_sources", "tracks", "resolved_hr", "heatmap", "app_choices"):
         st.session_state.pop(key, None)
 
 
@@ -135,23 +181,28 @@ def main():
                 model = load_read_model(
                     archive, settings, cache_dir=args.cache_dir, config=args.config
                 )
-                tables, daily = model.tables, model.daily
+                everything, daily = model.tables, model.daily
+                tables = select_apps(everything, settings.apps)
                 context = (key, model.sleep, model.workouts)
             else:
-                tables = load_archive(archive)
-                settings.check_devices(set(tables["devices"].device_id))
+                everything = load_archive(archive)
+                settings.check_devices(set(everything["devices"].device_id))
+                tables = select_apps(everything, settings.apps)
                 daily = daily_summary(tables, tables["devices"], settings)
                 context = None
             if verify_snapshot(archive) != snapshot:
                 raise ArchiveReadError("archive: snapshot changed; finish sync and reload")
             clear_snapshot_context()
             st.session_state["snapshot"] = (key, tables, daily)
+            st.session_state["app_choices"] = app_choices(everything)
             if context is not None:
                 st.session_state["overview_sources"] = context
     _, tables, daily = st.session_state["snapshot"]
     if tables["devices"].vendor.fillna("").eq("Fictional").all() and not tables["devices"].empty:
         st.info("Synthetic demonstration archive — not personal measurements.")
     settings_form(settings, tables["devices"], args.config)
+    app_filter(settings, st.session_state["app_choices"], args.config)
+    import_status(args.config.parent / STATUS_FILE)
     page = st.sidebar.selectbox("Page", list(PAGES), key="page")
     st.sidebar.caption(
         "Offline: no basemap requests"

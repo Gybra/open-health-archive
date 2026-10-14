@@ -25,6 +25,8 @@ class Settings:
     priority: dict[str, list[str]] = field(default_factory=dict)
     ingest_priority: dict[str, list[str]] = field(default_factory=dict)
     device_aliases: dict[str, str] = field(default_factory=dict)
+    # Dashboard app filter by readable label; empty means every app.
+    apps: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         try:
@@ -74,6 +76,12 @@ class Settings:
                 for k, v in self.device_aliases.items()
             ):
                 raise ValueError
+            if (
+                not isinstance(self.apps, list)
+                or any(not isinstance(a, str) or not a for a in self.apps)
+                or len(set(self.apps)) != len(self.apps)
+            ):
+                raise ValueError
         except (ValueError, TypeError, ZoneInfoNotFoundError):
             raise SettingsError(
                 "config: invalid profile, threshold, timezone or source priority"
@@ -121,6 +129,8 @@ def save_settings(path: Path, settings: Settings) -> None:
     ]
     if settings.archive_dir is not None:
         lines.append(f"archive_dir = {quote(settings.archive_dir)}")
+    if settings.apps:
+        lines.append(f"apps = {quote(settings.apps)}")
     lines.append("\n[profile]")
     for key in ("birth_year", "max_hr"):
         value = getattr(settings, key)
