@@ -158,29 +158,53 @@ def save_journal(root: Path, journal: Path, paths: list[str]) -> None:
                 f.flush()
                 os.fsync(f.fileno())
         entries.append({"path": rel, "existed": existed})
-    # The entry list is written last: without it nothing was replaced yet.
-    with (journal / "entries.json").open("w") as f:
+    # The entry list is written last and atomically: without it nothing was replaced yet.
+    partial = journal / "entries.json.partial"
+    with partial.open("w") as f:
         json.dump(entries, f)
         f.flush()
         os.fsync(f.fileno())
+    os.replace(partial, journal / "entries.json")
+
+
+def journaled_manifest(journal: Path, entries: list[dict]) -> bytes | None:
+    number = next(i for i, e in enumerate(entries) if e["path"] == "manifest.json")
+    return (journal / "blobs" / str(number)).read_bytes() if entries[number]["existed"] else None
+
+
+def discard_journal(journal: Path) -> None:
+    # Remove the entry list first, so a half-deleted journal is never replayed.
+    (journal / "entries.json").unlink(missing_ok=True)
+    shutil.rmtree(journal)
 
 
 def recover_archive(root: Path, journal: Path) -> bool:
-    """Undo an interrupted write recorded in journal; True when files were restored."""
+    """Undo an interrupted write recorded in journal; True when files were restored.
+
+    The manifest is replaced last, so an interrupted write still has the manifest the
+    journal saved. Any other manifest means the write finished, someone wrote since, or
+    this is a different archive: the journal no longer describes it and is dropped.
+    """
     if not journal.exists():
         return False
-    entries_file = journal / "entries.json"
-    restored = entries_file.exists()
-    if restored:
-        entries = json.loads(entries_file.read_text())
-        for number, entry in enumerate(entries):
-            target = root / entry["path"]
-            if entry["existed"]:
-                atomic_write(target, (journal / "blobs" / str(number)).read_bytes())
-            elif target.exists():
-                target.unlink()
-    shutil.rmtree(journal)
-    return restored
+    try:
+        entries = json.loads((journal / "entries.json").read_text())
+        before = journaled_manifest(journal, entries)
+    except (OSError, ValueError, KeyError, TypeError, StopIteration):
+        discard_journal(journal)
+        return False
+    manifest = root / "manifest.json"
+    if (manifest.read_bytes() if manifest.exists() else None) != before:
+        discard_journal(journal)
+        return False
+    for number, entry in enumerate(entries):
+        target = root / entry["path"]
+        if entry["existed"]:
+            atomic_write(target, (journal / "blobs" / str(number)).read_bytes())
+        elif target.exists():
+            target.unlink()
+    discard_journal(journal)
+    return True
 
 
 def write_archive(
@@ -219,4 +243,4 @@ def write_archive(
         (root / rel).unlink()
     atomic_write(root / "manifest.json", manifest_bytes(root, generator))
     if journal is not None:
-        shutil.rmtree(journal)
+        discard_journal(journal)

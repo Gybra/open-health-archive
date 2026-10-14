@@ -144,3 +144,50 @@ def test_journal_removed_after_success(tmp_path):
 
     assert not journal.exists()
     assert validate_archive(tmp_path / "archive") == []
+
+
+def leave_journal_after_complete_write(root, journal, monkeypatch):
+    from healthviz.archive import writer
+
+    monkeypatch.setattr(writer, "discard_journal", lambda path: None)
+    write_archive(root, {"heart_rate": [hr(bpm="70")]}, [], {}, "test", journal=journal)
+    monkeypatch.undo()
+    assert (journal / "entries.json").exists()
+
+
+def test_journal_of_a_completed_write_is_discarded(tmp_path, monkeypatch):
+    root, journal = tmp_path / "archive", tmp_path / "journal"
+    two_track_archive(root)
+    leave_journal_after_complete_write(root, journal, monkeypatch)
+    # Another importer writes in between; its rows must survive.
+    write_archive(root, {"heart_rate": [hr(ingest="xiaomi_export", record_id="x")]}, [], {}, "t")
+    after = snapshot(root)
+
+    assert recover_archive(root, journal) is False
+
+    assert snapshot(root) == after
+    assert not journal.exists()
+
+
+def test_journal_is_never_replayed_onto_another_archive(tmp_path, monkeypatch):
+    first, other, journal = tmp_path / "a", tmp_path / "b", tmp_path / "journal"
+    two_track_archive(first)
+    leave_journal_after_complete_write(first, journal, monkeypatch)
+    write_archive(other, {"heart_rate": [hr(record_id="other")]}, [], {}, "test")
+    before = snapshot(other)
+
+    assert recover_archive(other, journal) is False
+
+    assert snapshot(other) == before
+
+
+def test_torn_journal_is_discarded(tmp_path):
+    root, journal = tmp_path / "archive", tmp_path / "journal"
+    two_track_archive(root)
+    (journal / "blobs").mkdir(parents=True)
+    (journal / "entries.json").write_text('[{"path": "heart')
+    before = snapshot(root)
+
+    assert recover_archive(root, journal) is False
+
+    assert snapshot(root) == before and not journal.exists()
