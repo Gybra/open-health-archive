@@ -2,6 +2,7 @@ import importlib
 from datetime import date
 
 import pandas as pd
+import pytest
 
 from healthviz.settings import Settings
 
@@ -69,7 +70,34 @@ def test_resting_window_requires_six_samples_and_24_minutes():
     resting = mod.resting_from_sleep(hr, sleep)
     assert resting.iloc[0].bpm == 60
     assert resting.iloc[0].computed_by == "app"
-    assert mod.resting_from_sleep(hr.iloc[:5], sleep).empty
+    missing = mod.resting_from_sleep(hr.iloc[:5], sleep).iloc[0]
+    assert pd.isna(missing.bpm)
+    assert pd.isna(missing.computed_by)
+    assert missing.quality == "missing: fewer than six heart rate samples"
+
+
+@pytest.mark.parametrize("last_minute,expected", [(23, None), (24, 60)])
+def test_resting_window_support_boundary(last_minute, expected):
+    hr = heart([60] * 6)
+    hr["time_utc"] = pd.to_datetime(
+        [f"2026-01-01T00:{m:02}:00Z" for m in [0, 5, 10, 15, 20, last_minute]]
+    )
+    sleep = pd.DataFrame(
+        {
+            "start_utc": [pd.Timestamp("2026-01-01T00:00:00Z")],
+            "end_utc": [pd.Timestamp("2026-01-01T00:30:00Z")],
+            "date_local": [date(2026, 1, 1)],
+            "main": [True],
+            "eligible": [True],
+        }
+    )
+    row = module().resting_from_sleep(hr, sleep).iloc[0]
+    if expected is None:
+        assert pd.isna(row.bpm)
+        assert row.quality == "missing: no supported 30-minute window"
+    else:
+        assert row.bpm == expected
+        assert row.quality == "derived from main sleep"
 
 
 def test_vendor_resting_wins_and_sparse_night_is_null(tmp_path):

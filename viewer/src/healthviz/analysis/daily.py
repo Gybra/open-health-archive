@@ -65,6 +65,7 @@ def daily_summary(
         for day in pd.date_range(min(dates), max(dates))
     }
     for row in days.values():
+        row.update(resting_hr_ingest=None, resting_hr_source_app=None)
         for metric in METRICS:
             row.update(
                 {
@@ -99,6 +100,11 @@ def daily_summary(
                 else group[col].sum(min_count=1)
             )
             set_metric(days[day], metric, value, group)
+            if metric == "resting_hr":
+                source = group.iloc[0]
+                days[day].update(
+                    resting_hr_ingest=source.ingest, resting_hr_source_app=source.source_app
+                )
     for (day, kind), group in selected["calories"].groupby(["date_local", "kind"]):
         value = None if (group.quality == "ambiguous").any() else group.kcal.sum(min_count=1)
         set_metric(days[day], f"{kind}_kcal", value, group)
@@ -114,6 +120,10 @@ def daily_summary(
             group,
         )
     apply_fallback(days, tables, devices, settings)
+    for row in days.values():
+        if pd.isna(row["resting_hr"]) and row["resting_hr_quality"] != "ambiguous":
+            reason = "no main sleep session" if row["complete"] else "incomplete daily coverage"
+            row["resting_hr_quality"] = f"missing: {reason}"
     eligible_nights = (
         nights.loc[
             nights.date_local.map(
@@ -125,13 +135,18 @@ def daily_summary(
     )
     for resting in resting_from_sleep(hr, eligible_nights).to_dict("records"):
         row = days[resting["date_local"]]
-        if pd.isna(row["resting_hr"]):
+        if pd.isna(resting["bpm"]):
+            if row["resting_hr_quality"] != "ambiguous":
+                row["resting_hr_quality"] = resting["quality"]
+        else:
             row.update(
                 {
                     "resting_hr": resting["bpm"],
                     "resting_hr_physical_device_id": resting["physical_device_id"],
                     "resting_hr_computed_by": "app",
-                    "resting_hr_quality": "derived from main sleep",
+                    "resting_hr_quality": resting["quality"],
+                    "resting_hr_ingest": None,
+                    "resting_hr_source_app": None,
                 }
             )
     return pd.DataFrame(days.values()).sort_values("date_local").reset_index(drop=True)

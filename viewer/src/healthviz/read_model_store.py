@@ -13,7 +13,7 @@ from healthviz.analysis.sleep import SLEEP_COLUMNS, STAGES
 from healthviz.analysis.sources import EXTRA
 from healthviz.archive.schema import TABLES
 
-FORMAT_VERSION = 2
+FORMAT_VERSION = 3
 DTYPES = {
     "object",
     "str",
@@ -117,7 +117,15 @@ def write_frames(path: Path, frames: dict, raw_key: str, derived_key: str):
 
 
 def validate_metadata(conn, metadata):
-    daily = {"date_local", "worn_hours", "complete", "sleep_eligible", *METRICS}
+    daily = {
+        "date_local",
+        "worn_hours",
+        "complete",
+        "sleep_eligible",
+        *METRICS,
+        "resting_hr_ingest",
+        "resting_hr_source_app",
+    }
     for metric in METRICS:
         daily.update(
             f"{metric}_{suffix}"
