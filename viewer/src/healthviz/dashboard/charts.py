@@ -113,6 +113,8 @@ def resting_figure(daily, start, end, usual) -> go.Figure:
                 hovertemplate="%{x|%Y-%m-%d}<br>%{y:.0f} bpm<br>%{text}<extra></extra>",
             )
         )
+    # Wrapped mobile legends must grow above the plot, not cover its highest readings.
+    figure.update_layout(legend={"y": 1.02, "yanchor": "bottom"}, margin={"t": 80}, height=320)
     return go.Figure(data=[*points, *figure.data[1:]], layout=figure.layout)
 
 

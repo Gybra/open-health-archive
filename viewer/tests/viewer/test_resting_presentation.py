@@ -31,6 +31,8 @@ def test_resting_chart_distinguishes_methods_without_changing_eligibility(restin
         "7-day average",
         "your usual",
     ]
+    assert figure.layout.legend.yanchor == "bottom", "wrapped legend must stay above the data"
+    assert figure.layout.legend.y > 1
     assert provided.marker.symbol != estimate.marker.symbol
     assert provided.mode == estimate.mode == "markers"
     assert list(provided.y[:3]) == [55, 52, None]
