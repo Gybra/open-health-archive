@@ -184,6 +184,37 @@ history outside the visible range. Plotly charts offer PNG downloads.
 Vendor fallback is never added to raw data. Do not import or sync files while
 consulting; a changing/inconsistent snapshot is rejected rather than silently read.
 
+### Resting heart rate: history, estimates and unavailable values
+
+An original vendor export can supply the initial history while Health Connect alone
+supplies subsequent updates. The original app does not need to be imported again.
+Metric availability can differ: ordinary heart-rate samples do not imply that Health
+Connect also contains a source-provided resting heart rate.
+
+The Heart and Overview charts distinguish **Provided by source** (circles) from
+**Estimated from sleep** (diamonds). Hover text identifies the source app and importer
+for supplied values. A supplied Health Connect value is not labeled historical simply
+because a device or app computed it. Proprietary source methods and viewer estimates
+may differ; the viewer does not calibrate one to the other.
+
+If a source-provided resting value is unavailable, the viewer estimates it from the
+lowest time-weighted mean in a supported 30-minute window during the main eligible
+sleep session. The day must meet the configured HR-coverage threshold (10 hours by
+default). A window needs at least six samples and 24 minutes of support, with each
+sample supporting no more than five minutes and the final sample providing no following
+support. No reading or sleep stage is invented to fill gaps.
+
+The Day view explains an unavailable value; the Heart raw table and CSV retain the
+first blocking reason, such as incomplete daily coverage, no eligible main sleep, or
+insufficient heart-rate samples during that sleep. This reason is not an exhaustive
+list of problems. Missing values stay empty, never zero or copied from history. A
+recorded value on an incomplete day remains inspectable but is excluded from the daily
+charts and averages. A missing chart point does not by itself indicate stale cache.
+
+These labels and explanations do not change calculation thresholds, source priorities,
+or aggregate eligibility. Existing disposable read-model caches rebuild automatically
+for the updated metadata; no archive migration or reimport is needed.
+
 ## Optional persistent local preparation
 
 `start.sh` always enables a disposable DuckDB read model in the OS cache folder. With

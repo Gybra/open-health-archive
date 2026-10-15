@@ -2,6 +2,7 @@ from copy import deepcopy
 from datetime import UTC, date, datetime, timedelta
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from fixture_archive import FIXTURE_DEVICES, fixture_row
 
@@ -13,6 +14,77 @@ from healthviz.archive.schema import TABLES
 from healthviz.archive.writer import write_archive
 from healthviz.read_model import load_read_model
 from healthviz.settings import Settings
+
+
+def test_health_connect_only_update_keeps_history_without_filling_missing_days(tmp_path):
+    from zoneinfo import ZoneInfo
+
+    from health_connect_export import HOUR_MS, build_export, instant, interval
+    from resting_archive import write_resting_archive
+
+    from healthviz.analysis.daily import daily_summary
+    from healthviz.archive.reader import load_archive
+    from healthviz.health_connect.importer import import_health_connect
+
+    root = write_resting_archive(tmp_path / "archive")
+    cache = tmp_path / "cache"
+    cache.mkdir(mode=0o700)
+    config = tmp_path / "config/config.toml"
+    before = load_read_model(root, Settings(), cache_dir=cache, config=config).daily
+    start = int(datetime(2026, 1, 11, tzinfo=UTC).timestamp() * 1000)
+    export = build_export(
+        tmp_path / "new.zip",
+        {
+            "heart_rate_record_table": [
+                interval(700, start + 10 * HOUR_MS, start + 20 * HOUR_MS, offset_s=0)
+            ],
+            "heart_rate_record_series_table": [
+                dict(parent_key=700, beats_per_minute=70, epoch_millis=start + hour * HOUR_MS)
+                for hour in range(10, 20)
+            ],
+            "sleep_session_record_table": [interval(701, start, start + HOUR_MS, offset_s=0)],
+            "sleep_stages_table": [
+                dict(
+                    parent_key=701,
+                    stage_start_time=start,
+                    stage_end_time=start + HOUR_MS,
+                    stage_type=4,
+                )
+            ],
+            "resting_heart_rate_record_table": [
+                instant(702, start + 34 * HOUR_MS, offset_s=0, beats_per_minute=54)
+            ],
+        },
+    )
+    status = import_health_connect(
+        export,
+        root,
+        zone=ZoneInfo("UTC"),
+        status=tmp_path / "status.json",
+        journal=tmp_path / "journal",
+    )
+    assert status.error is None
+    tables = load_archive(root)
+    expected = daily_summary(tables, tables["devices"], Settings())
+    for _ in range(2):
+        actual = load_read_model(root, Settings(), cache_dir=cache, config=config).daily
+        pd.testing.assert_frame_equal(actual, expected)
+    # Later missing metrics can promote integer columns to float without changing history.
+    pd.testing.assert_frame_equal(
+        expected.iloc[:10].reset_index(drop=True), before, check_dtype=False
+    )
+    daily = expected.set_index("date_local")
+    assert daily.loc[date(2026, 1, 1), "resting_hr"] == 55
+    assert daily.loc[date(2026, 1, 1), "resting_hr_ingest"] == "xiaomi_export"
+    assert daily.loc[date(2026, 1, 3), "resting_hr"] == 60
+    missing = daily.loc[date(2026, 1, 11)]
+    assert missing.complete
+    assert pd.isna(missing.resting_hr)
+    assert missing.resting_hr_quality == "missing: no heart rate samples during main sleep"
+    supplied = daily.loc[date(2026, 1, 12)]
+    assert supplied.resting_hr == 54
+    assert supplied.resting_hr_ingest == "health_connect"
+    assert supplied.resting_hr_computed_by == "vendor"
 
 
 def test_nonempty_historical_answers_match_cold_and_persistent_hit(tmp_path):
