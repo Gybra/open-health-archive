@@ -1,4 +1,5 @@
 from collections.abc import Callable
+from html import escape
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -8,7 +9,7 @@ from healthviz.analysis.sources import resolve_rows
 from healthviz.analysis.usual import READINGS
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.context import per_snapshot
-from healthviz.dashboard.format import difference_text, measured_text
+from healthviz.dashboard.format import difference_text, measured_text, resting_text
 
 FADED, AVERAGE, USUAL = "#93b4ef", "#1f6feb", "#9ca3af"
 # Levels (heart rate, weight, SpO₂) are read against their own range; amounts start at zero.
@@ -82,6 +83,55 @@ def daily_figure(daily, metric, start, end, usual, unit, *, bars=False, scale=1.
     if metric not in LEVELS:
         figure.update_yaxes(rangemode="tozero")
     return compact(figure, unit)
+
+
+def resting_figure(daily, start, end, usual) -> go.Figure:
+    """Keep the daily statistic, but distinguish supplied values from viewer estimates."""
+    figure = daily_figure(daily, "resting_hr", start, end, usual, "bpm")
+    if daily.empty:
+        return figure
+    period = filtered(daily, start, end).sort_values("date_local")
+    estimated = period.resting_hr_quality.eq("derived from main sleep")
+    text = [escape(resting_text(row)) for row in period.itertuples()]
+    single = figure.data[0]
+    points = []
+    for name, mask, symbol, color in (
+        ("Provided by source", ~estimated, "circle", FADED),
+        ("Estimated from sleep", estimated, "diamond", AVERAGE),
+    ):
+        points.append(
+            go.Scatter(
+                x=single.x,
+                y=[
+                    value if keep and pd.notna(value) else None
+                    for value, keep in zip(single.y, mask, strict=True)
+                ],
+                name=name,
+                mode="markers",
+                marker={"symbol": symbol, "color": color, "size": 7},
+                text=text,
+                hovertemplate="%{x|%Y-%m-%d}<br>%{y:.0f} bpm<br>%{text}<extra></extra>",
+            )
+        )
+    return go.Figure(data=[*points, *figure.data[1:]], layout=figure.layout)
+
+
+def resting_caption(daily, start, end):
+    period = filtered(daily, start, end)
+    present = period.resting_hr.notna()
+    missing = int((~present).sum())
+    excluded = int((present & ~period.complete.astype(bool)).sum())
+    st.caption(
+        "Estimates require sufficient heart-rate samples during main sleep. "
+        "Unavailable values do not by themselves indicate a cache error. "
+        f"{missing} days unavailable · {excluded} recorded "
+        f"{'day' if excluded == 1 else 'days'} excluded from daily aggregates."
+    )
+    methods = period.loc[present, "resting_hr_quality"].eq("derived from main sleep")
+    if methods.any() and (~methods).any():
+        st.caption(
+            "This period mixes source-provided and viewer-estimated values; methods may differ."
+        )
 
 
 def range_figure(daily, start, end) -> go.Figure:

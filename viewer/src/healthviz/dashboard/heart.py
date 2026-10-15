@@ -12,6 +12,8 @@ from healthviz.dashboard.charts import (
     overlap_audit,
     range_figure,
     raw_data,
+    resting_caption,
+    resting_figure,
     show_number,
 )
 from healthviz.dashboard.context import day_picker, open_page
@@ -41,10 +43,11 @@ def render(context):
     with left:
         st.subheader("Resting heart rate")
         st.plotly_chart(
-            daily_figure(daily, "resting_hr", start, end, resting.usual, "bpm"),
+            resting_figure(daily, start, end, resting.usual),
             width="stretch",
             key="heart-resting",
         )
+        resting_caption(daily, start, end)
         st.subheader("Blood oxygen")
         st.plotly_chart(
             daily_figure(daily, "spo2", start, end, oxygen.usual, "%"),

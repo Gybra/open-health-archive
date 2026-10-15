@@ -6,6 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import pandas as pd
 
+from healthviz.analysis.apps import app_label
 from healthviz.analysis.usual import Comparison
 
 THIN = "\u202f"  # narrow no-break space between thousands
@@ -75,6 +76,23 @@ def stamp_text(iso_utc: str | None, timezone: str) -> str:
         return f"{pd.Timestamp(iso_utc).tz_convert(ZoneInfo(timezone)):%Y-%m-%d %H:%M}"
     except (TypeError, ValueError, ZoneInfoNotFoundError):
         return str(iso_utc)
+
+
+def resting_text(row) -> str:
+    """Plain-text provenance, or the recorded first blocker, for one daily value."""
+    if pd.isna(row.resting_hr):
+        return "Unavailable · " + row.resting_hr_quality.removeprefix("missing: ")
+    if row.resting_hr_quality == "derived from main sleep":
+        text = "Estimated by viewer from main sleep"
+    else:
+        ingest = row.resting_hr_ingest
+        adapter = {"health_connect": "Health Connect", "xiaomi_export": "Xiaomi export"}.get(
+            ingest, ingest if pd.notna(ingest) else "Unknown source"
+        )
+        text = f"Provided by source · {app_label(row.resting_hr_source_app)} via {adapter}"
+    if not row.complete:
+        text += " · excluded from daily aggregates: incomplete daily coverage"
+    return text
 
 
 def bpm(value):

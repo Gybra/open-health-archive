@@ -9,7 +9,14 @@ from healthviz.analysis.usual import (
     compare_point_readings,
     compare_weekly_total,
 )
-from healthviz.dashboard.charts import daily_figure, filtered, raw_data, show_number
+from healthviz.dashboard.charts import (
+    daily_figure,
+    filtered,
+    raw_data,
+    resting_caption,
+    resting_figure,
+    show_number,
+)
 from healthviz.dashboard.context import derived, open_page
 from healthviz.dashboard.format import (
     bpm,
@@ -90,17 +97,22 @@ def section(context, area, numbers):
             st.button(f"{area} details →", on_click=open_page, args=(area,), key="open-" + area)
         with right:
             usual = numbers[0][1].usual
-            figure = daily_figure(
-                context.daily,
-                metric,
-                context.start,
-                context.end,
-                usual,
-                unit,
-                bars=bars,
-                scale=scale,
-            )
+            if metric == "resting_hr":
+                figure = resting_figure(context.daily, context.start, context.end, usual)
+            else:
+                figure = daily_figure(
+                    context.daily,
+                    metric,
+                    context.start,
+                    context.end,
+                    usual,
+                    unit,
+                    bars=bars,
+                    scale=scale,
+                )
             st.plotly_chart(figure, width="stretch", key="overview-" + area)
+            if metric == "resting_hr":
+                resting_caption(context.daily, context.start, context.end)
 
 
 def render(context):
