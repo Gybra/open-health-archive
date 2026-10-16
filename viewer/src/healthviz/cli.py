@@ -11,12 +11,23 @@ from healthviz.xiaomi.importer import import_xiaomi
 from healthviz.xiaomi.source import ExportError
 
 
-def zone_for(timezone: str | None, config: Path | None) -> ZoneInfo:
-    """The IANA zone an import needs: the explicit one, else the private config's."""
-    name = timezone or (load_settings(config).default_timezone if config else None)
-    if name is None:
-        raise SettingsError("give --timezone or --config")
-    return ZoneInfo(name)
+def import_zone(timezone: str | None, config: Path | None) -> ZoneInfo | None:
+    """The import's IANA zone, or None after printing why it cannot be resolved.
+
+    An absent config file saves no timezone, and the settings loader's UTC default is not
+    the user's zone: the import stops instead of writing every offset as UTC.
+    """
+    try:
+        saved = load_settings(config).default_timezone if config and config.exists() else None
+        name = timezone or saved
+        if name is None:
+            raise SettingsError("give --timezone, or a --config that saves default_timezone")
+        return ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError):
+        print("import failed: unknown timezone", file=sys.stderr)
+    except SettingsError as error:
+        print(f"import failed: {error}", file=sys.stderr)
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -63,19 +74,11 @@ def main(argv: list[str] | None = None) -> int:
         )
     if args.vendor == "health-connect":
         return import_health_connect_command(args)
+    zone = import_zone(args.timezone, args.config)
+    if zone is None:
+        return 1
     try:
-        result = import_xiaomi(
-            args.export,
-            args.out,
-            zone=zone_for(args.timezone, args.config),
-            tracks_dir=args.tracks_dir,
-        )
-    except (ZoneInfoNotFoundError, ValueError):
-        print("import failed: unknown timezone", file=sys.stderr)
-        return 1
-    except SettingsError as error:
-        print(f"import failed: {error}", file=sys.stderr)
-        return 1
+        result = import_xiaomi(args.export, args.out, zone=zone, tracks_dir=args.tracks_dir)
     except (ExportError, SchemaMismatch) as error:
         print(f"import failed: {error}", file=sys.stderr)
         return 1
@@ -95,13 +98,8 @@ def main(argv: list[str] | None = None) -> int:
 def import_health_connect_command(args) -> int:
     from healthviz.health_connect.importer import import_health_connect
 
-    try:
-        zone = zone_for(args.timezone, args.config)
-    except (ZoneInfoNotFoundError, ValueError):
-        print("import failed: unknown timezone", file=sys.stderr)
-        return 1
-    except SettingsError as error:
-        print(f"import failed: {error}", file=sys.stderr)
+    zone = import_zone(args.timezone, args.config)
+    if zone is None:
         return 1
     status = import_health_connect(
         args.source, args.out, zone=zone, status=args.status, journal=args.journal, label=args.label
