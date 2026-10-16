@@ -57,6 +57,16 @@ cache_dir() {
     fi
 }
 
+# The host's IANA zone: the container's own answer is UTC, which is not the user's.
+host_zone() {
+    if [ -r /etc/timezone ]; then
+        head -n 1 /etc/timezone
+    elif [ -L /etc/localtime ]; then
+        link=$(readlink /etc/localtime)
+        case $link in */zoneinfo/*) printf '%s\n' "${link#*/zoneinfo/}" ;; esac
+    fi
+}
+
 compose() {
     docker compose -f compose.yaml -f compose.launcher.yaml "$@"
 }
@@ -90,6 +100,15 @@ else
     imports=$(folder import_dir "Choose the folder where you download Health Connect exports")
 fi
 mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
+# A missing settings file means an import would write every offset as UTC: save the
+# host's zone once. An existing file is the user's and is left alone.
+if [ ! -f "$CONFIG_DIR/config.toml" ]; then
+    zone=$(host_zone)
+    if [ -n "$zone" ]; then
+        printf 'default_timezone = "%s"\n' "$zone" > "$CONFIG_DIR/config.toml"
+        chmod 600 "$CONFIG_DIR/config.toml"
+    fi
+fi
 printf 'archive_dir=%s\nimport_dir=%s\n' "$archive" "$imports" > "$PREFS"
 chmod 600 "$PREFS"
 cache=${HEALTHVIZ_CACHE_DIR:-$(cache_dir)}

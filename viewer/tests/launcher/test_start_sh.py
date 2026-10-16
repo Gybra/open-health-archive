@@ -1,8 +1,10 @@
 """start.sh on Linux with a stub docker: folder choice, preferences and command order."""
 
 import os
+import re
 import subprocess
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -229,3 +231,26 @@ def test_unknown_option_stops_before_docker(home):
     assert result.returncode == 1
     assert "Unknown option: --nope" in result.stderr
     assert "ARGS:" not in log
+
+
+def test_first_run_saves_the_host_timezone_for_the_import(home):
+    result, _ = start(home, answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    settings = home / ".config/healthviz/config.toml"
+    assert oct(settings.stat().st_mode & 0o777) == "0o600"
+    saved = re.fullmatch(r'default_timezone = "([^"]+)"\n', settings.read_text())
+    # Only a zone the container can load is worth saving.
+    assert saved, settings.read_text()
+    ZoneInfo(saved.group(1))
+
+
+def test_existing_settings_are_left_alone(home):
+    settings = home / ".config/healthviz/config.toml"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("worn_hours_threshold = 8\n")
+
+    result, _ = start(home, answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    assert settings.read_text() == "worn_hours_threshold = 8\n"

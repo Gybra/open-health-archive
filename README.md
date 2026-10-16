@@ -48,7 +48,9 @@ at `http://127.0.0.1:8501`. Docker is the only requirement.
 The first run asks, with the system folder dialog, for the archive folder and for the
 folder where you download Health Connect exports (any folder, e.g. Downloads). On
 Linux without `zenity` or `kdialog` it asks in the terminal. The choices are saved in
-`~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder).
+`~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder). It
+also saves this computer's IANA timezone in `config.toml` beside it, so an import never
+assumes UTC.
 
 Each run rebuilds the image when the checkout changed (offline it keeps the existing
 image), stops the viewer, imports in a container that sees only the export folder
@@ -102,8 +104,8 @@ To support another source, see [docs/adding-an-importer.md](docs/adding-an-impor
 
 `./start.sh --xiaomi "/absolute/path/to/extracted-export"` stops the viewer, imports the
 export into the same archive and opens the viewer again. It downloads the GPX tracks,
-which needs network access, and takes the fallback timezone from your private settings;
-the saved Health Connect folder is left alone. Run it once per export; plain
+which needs network access, and imports in this computer's timezone, saved in
+`config.toml`; the saved Health Connect folder is left alone. Run it once per export; plain
 `./start.sh` keeps importing Health Connect as usual.
 
 To import by hand instead, with an explicit timezone: build the image first with
@@ -125,8 +127,9 @@ docker run --rm --network none --cap-drop ALL \
   --out /output --tracks-dir /input/tracks --timezone Europe/Rome
 ```
 
-`--timezone` (or `--config`, for a settings file's fallback timezone) is required: use
-your home IANA timezone, not the container's UTC setting. Vendor offsets take precedence where provided; travel offsets for minute
+`--timezone` (or `--config`, for a settings file that saves `default_timezone`) is
+required: use your home IANA timezone, not the container's UTC setting. Without a saved
+timezone the import stops instead of assuming UTC. Vendor offsets take precedence where provided; travel offsets for minute
 samples are estimates based on nearby sleep/workout records. Minute interval ends
 are inferred as timestamp +60 seconds; confirm them against vendor documentation
 before comparing fine-grained interval data across manufacturers.
