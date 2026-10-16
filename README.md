@@ -42,6 +42,7 @@ at `http://127.0.0.1:8501`. Docker is the only requirement.
 ```sh
 ./start.sh            # import the newest export and open the viewer
 ./start.sh --choose   # pick the folders again
+./start.sh --xiaomi "/absolute/path/to/extracted-export"   # import a Mi Fitness export
 ```
 
 The first run asks, with the system folder dialog, for the archive folder and for the
@@ -50,9 +51,10 @@ Linux without `zenity` or `kdialog` it asks in the terminal. The choices are sav
 `~/.config/healthviz/launcher.conf` (`HEALTHVIZ_CONFIG_DIR` changes the folder).
 
 Each run rebuilds the image when the checkout changed (offline it keeps the existing
-image), stops the viewer, imports in a container without network that sees only the
-export folder (read-only), the archive and the private config, then starts the viewer
-read-only, with the persistent local read model in the OS cache folder
+image), stops the viewer, imports in a container that sees only the export folder
+(read-only), the archive and the private config (the Xiaomi import keeps network access
+for its signed track links), then starts the viewer read-only, with the persistent local
+read model in the OS cache folder
 (`~/Library/Caches/OpenHealthArchive/viewer` on macOS,
 `~/.cache/open-health-archive/viewer` on Linux; `HEALTHVIZ_CACHE_DIR` overrides it).
 If the import fails, the viewer still starts with the previous data and its sidebar
@@ -98,9 +100,16 @@ To support another source, see [docs/adding-an-importer.md](docs/adding-an-impor
 
 ## Import a Mi Fitness export
 
-Build the image first with `docker compose build`. Keep private files OUTSIDE this
-repository. Choose separate absolute host paths for the extracted export, saved GPX
-folder and output archive. Create the output folder yourself before running:
+`./start.sh --xiaomi "/absolute/path/to/extracted-export"` stops the viewer, imports the
+export into the same archive and opens the viewer again. It downloads the GPX tracks,
+which needs network access, and takes the fallback timezone from your private settings;
+the saved Health Connect folder is left alone. Run it once per export; plain
+`./start.sh` keeps importing Health Connect as usual.
+
+To import by hand instead, with an explicit timezone: build the image first with
+`docker compose build`. Keep private files OUTSIDE this repository. Choose separate
+absolute host paths for the extracted export, saved GPX folder and output archive.
+Create the output folder yourself before running:
 
 ```sh
 EXPORT_DIR="/absolute/path/to/extracted-export"
@@ -116,8 +125,8 @@ docker run --rm --network none --cap-drop ALL \
   --out /output --tracks-dir /input/tracks --timezone Europe/Rome
 ```
 
-`--timezone` is required: use your home IANA timezone, not the container's UTC
-setting. Vendor offsets take precedence where provided; travel offsets for minute
+`--timezone` (or `--config`, for a settings file's fallback timezone) is required: use
+your home IANA timezone, not the container's UTC setting. Vendor offsets take precedence where provided; travel offsets for minute
 samples are estimates based on nearby sleep/workout records. Minute interval ends
 are inferred as timestamp +60 seconds; confirm them against vendor documentation
 before comparing fine-grained interval data across manufacturers.
