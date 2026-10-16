@@ -122,3 +122,86 @@ def test_malformed_values_are_redacted(tmp_path, capsys):
     assert "SECRET" not in output.out + output.err
     assert "4242" not in output.out + output.err
     assert "900" not in output.out + output.err
+
+
+def test_cli_config_supplies_the_fallback_timezone(tmp_path):
+    export = synthetic_export(tmp_path / "input")
+    tracks = tmp_path / "tracks"
+    tracks.mkdir()
+    (tracks / "1767258000.gpx").write_bytes(GPX)
+    config = tmp_path / "config.toml"
+    config.write_text('default_timezone = "Europe/Rome"\n')
+    base = ["import", "xiaomi", str(export), "--tracks-dir", str(tracks)]
+
+    assert main([*base, "--out", str(tmp_path / "zone"), "--timezone", "Europe/Rome"]) == 0
+    assert main([*base, "--out", str(tmp_path / "settings"), "--config", str(config)]) == 0
+
+    def heart_rows(root):
+        return [path.read_text() for path in sorted((root / "heart_rate").glob("*.csv"))]
+
+    assert heart_rows(tmp_path / "settings") == heart_rows(tmp_path / "zone")
+
+
+def test_cli_without_a_timezone_or_config_fails(tmp_path, capsys):
+    export = synthetic_export(tmp_path / "input")
+
+    assert main(["import", "xiaomi", str(export), "--out", str(tmp_path / "a")]) == 1
+    assert "import failed: give --timezone, or a --config that saves" in capsys.readouterr().err
+
+
+def test_cli_config_that_is_not_there_is_not_utc(tmp_path, capsys):
+    export = synthetic_export(tmp_path / "input")
+    argv = [
+        "import",
+        "xiaomi",
+        str(export),
+        "--out",
+        str(tmp_path / "a"),
+        "--config",
+        str(tmp_path / "config.toml"),
+    ]
+
+    assert main(argv) == 1
+    assert "unknown timezone" not in capsys.readouterr().err
+    assert not (tmp_path / "a").exists()
+
+
+def test_cli_explicit_timezone_ignores_a_broken_config(tmp_path):
+    export = synthetic_export(tmp_path / "input")
+    config = tmp_path / "config.toml"
+    config.write_text("not valid toml [[[\n")
+    argv = [
+        "import",
+        "xiaomi",
+        str(export),
+        "--out",
+        str(tmp_path / "a"),
+        "--timezone",
+        "Europe/Rome",
+        "--config",
+        str(config),
+    ]
+
+    assert main(argv) == 0
+
+
+def test_cli_unreadable_bytes_are_not_blamed_on_the_timezone(tmp_path, capsys):
+    export = synthetic_export(tmp_path / "input")
+    # Invalid UTF-8, as a truncated or hand-edited vendor export can be.
+    (export / "20000101_1_MiFitness_hlth_center_fitness_data.csv").write_bytes(
+        b"\xff\xfe not utf-8"
+    )
+    argv = [
+        "import",
+        "xiaomi",
+        str(export),
+        "--out",
+        str(tmp_path / "a"),
+        "--timezone",
+        "Europe/Rome",
+    ]
+
+    assert main(argv) == 1
+    captured = capsys.readouterr()
+    assert "import failed: cannot read input or write archive" in captured.err
+    assert "unknown timezone" not in captured.err

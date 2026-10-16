@@ -1,7 +1,8 @@
 #!/bin/sh
 # Start Open Health Archive on macOS or Linux: import the newest Health Connect
 # export from the chosen folder, then open the viewer. Run with --choose to pick
-# the folders again. Everything except the folder dialogs runs in Docker.
+# the folders again, or --xiaomi <export folder> to import a Mi Fitness export
+# instead. Everything except the folder dialogs runs in Docker.
 # HEALTHVIZ_CONFIG_DIR and HEALTHVIZ_CACHE_DIR override the private folders.
 set -eu
 cd "$(dirname "$0")"
@@ -11,9 +12,6 @@ PREFS=$CONFIG_DIR/launcher.conf
 URL=http://127.0.0.1:8501
 NEWLINE='
 '
-choose=0
-[ "${1:-}" = "--choose" ] && choose=1
-
 die() {
     printf '%s\n' "$*" >&2
     exit 1
@@ -59,14 +57,58 @@ cache_dir() {
     fi
 }
 
+# The host's IANA zone: the container's own answer is UTC, which is not the user's.
+host_zone() {
+    if [ -r /etc/timezone ]; then
+        head -n 1 /etc/timezone
+    elif [ -L /etc/localtime ]; then
+        link=$(readlink /etc/localtime)
+        case $link in */zoneinfo/*) printf '%s\n' "${link#*/zoneinfo/}" ;; esac
+    fi
+}
+
 compose() {
     docker compose -f compose.yaml -f compose.launcher.yaml "$@"
 }
 
+choose=0
+xiaomi=
+while [ $# -gt 0 ]; do
+    case $1 in
+        --choose)
+            choose=1
+            shift
+            ;;
+        --xiaomi)
+            xiaomi=${2:-}
+            [ -n "$xiaomi" ] && [ -d "$xiaomi" ] || die "--xiaomi needs an existing export folder."
+            shift 2
+            ;;
+        *)
+            die "Unknown option: $1"
+            ;;
+    esac
+done
+
 command -v docker >/dev/null 2>&1 || die "Docker is required: install and start Docker Desktop or Docker Engine."
 archive=$(folder archive_dir "Choose the archive folder")
-imports=$(folder import_dir "Choose the folder where you download Health Connect exports")
+# A Xiaomi import reads the export given on the command line; the Health Connect
+# folder stays as it was saved.
+if [ -n "$xiaomi" ]; then
+    imports=$(pref import_dir)
+else
+    imports=$(folder import_dir "Choose the folder where you download Health Connect exports")
+fi
 mkdir -p "$CONFIG_DIR" && chmod 700 "$CONFIG_DIR"
+# A missing settings file means an import would write every offset as UTC: save the
+# host's zone once. An existing file is the user's and is left alone.
+if [ ! -f "$CONFIG_DIR/config.toml" ]; then
+    zone=$(host_zone)
+    if [ -n "$zone" ]; then
+        printf 'default_timezone = "%s"\n' "$zone" > "$CONFIG_DIR/config.toml"
+        chmod 600 "$CONFIG_DIR/config.toml"
+    fi
+fi
 printf 'archive_dir=%s\nimport_dir=%s\n' "$archive" "$imports" > "$PREFS"
 chmod 600 "$PREFS"
 cache=${HEALTHVIZ_CACHE_DIR:-$(cache_dir)}
@@ -76,9 +118,11 @@ if [ ! -d "$cache_parent" ]; then
     mkdir -p "$cache_parent" && chmod 700 "$cache_parent"
 fi
 
-label=$imports
-case $imports in "$HOME"/*) label="~/${imports#"$HOME"/}" ;; esac
-export HEALTHVIZ_ARCHIVE_DIR="$archive" HEALTHVIZ_IMPORT_DIR="$imports" \
+# The import container reads one folder: Health Connect's, or the Xiaomi export.
+source_dir=${xiaomi:-$imports}
+label=$source_dir
+case $source_dir in "$HOME"/*) label="~/${source_dir#"$HOME"/}" ;; esac
+export HEALTHVIZ_ARCHIVE_DIR="$archive" HEALTHVIZ_IMPORT_DIR="$source_dir" \
     HEALTHVIZ_IMPORT_LABEL="$label" HEALTHVIZ_CONFIG_DIR="$CONFIG_DIR" HEALTHVIZ_CACHE_DIR="$cache"
 
 # Rebuild so an updated checkout is what runs; without network keep the existing image.
@@ -102,7 +146,11 @@ if [ "$(uname -s)" = Linux ]; then
 else
     set --
 fi
-compose run --rm "$@" import || printf '%s\n' "Import failed; the viewer shows the reason." >&2
+if [ -n "$xiaomi" ]; then
+    compose run --rm "$@" import-xiaomi || printf '%s\n' "Xiaomi import failed; see the lines above." >&2
+else
+    compose run --rm "$@" import || printf '%s\n' "Import failed; the viewer shows the reason." >&2
+fi
 compose up -d viewer
 
 if command -v curl >/dev/null 2>&1; then

@@ -1,8 +1,10 @@
 """start.sh on Linux with a stub docker: folder choice, preferences and command order."""
 
 import os
+import re
 import subprocess
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -188,3 +190,67 @@ def test_cache_override_with_any_name_leaves_its_parent_alone(home):
     )
     assert mkdir.endswith(" oha-cache") and f"src={parent}," in mkdir
     assert oct(parent.stat().st_mode & 0o777) == "0o755"
+
+
+def test_xiaomi_import_reads_the_given_folder(home):
+    export = home / "export"
+    export.mkdir()
+
+    result, log = start(home, "--xiaomi", str(export), answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    assert f"IMPORT:{export}\n" in log
+    assert "LABEL:~/export\n" in log
+    run = next(c for c in log.splitlines() if "compose" in c and "run --rm" in c)
+    assert run.endswith(" import-xiaomi")
+
+
+def test_xiaomi_import_keeps_the_saved_health_connect_folder(home):
+    start(home, answers=answers(home))
+    export = home / "export"
+    export.mkdir()
+
+    result, log = start(home, "--xiaomi", str(export), answers="")
+
+    assert result.returncode == 0, result.stderr
+    assert f"IMPORT:{export}\n" in log
+    saved = (home / ".config/healthviz/launcher.conf").read_text()
+    assert f"import_dir={home / 'downloads'}" in saved
+
+
+def test_xiaomi_import_needs_an_existing_folder(home):
+    result, log = start(home, "--xiaomi", str(home / "nowhere"), answers=answers(home))
+
+    assert result.returncode == 1
+    assert "ARGS:" not in log
+
+
+def test_unknown_option_stops_before_docker(home):
+    result, log = start(home, "--nope", answers=answers(home))
+
+    assert result.returncode == 1
+    assert "Unknown option: --nope" in result.stderr
+    assert "ARGS:" not in log
+
+
+def test_first_run_saves_the_host_timezone_for_the_import(home):
+    result, _ = start(home, answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    settings = home / ".config/healthviz/config.toml"
+    assert oct(settings.stat().st_mode & 0o777) == "0o600"
+    saved = re.fullmatch(r'default_timezone = "([^"]+)"\n', settings.read_text())
+    # Only a zone the container can load is worth saving.
+    assert saved, settings.read_text()
+    ZoneInfo(saved.group(1))
+
+
+def test_existing_settings_are_left_alone(home):
+    settings = home / ".config/healthviz/config.toml"
+    settings.parent.mkdir(parents=True)
+    settings.write_text("worn_hours_threshold = 8\n")
+
+    result, _ = start(home, answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    assert settings.read_text() == "worn_hours_threshold = 8\n"
