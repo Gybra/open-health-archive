@@ -101,45 +101,65 @@ def zone_seconds(hr: pd.DataFrame, start, end, maximum: float | None) -> pd.Data
 
 
 def resting_from_sleep(hr: pd.DataFrame, sleep: pd.DataFrame) -> pd.DataFrame:
+    """One outcome per main sleep, including why a numeric estimate is unavailable."""
     output = []
-    if hr.empty or sleep.empty:
-        return pd.DataFrame(columns=["date_local", "bpm", "physical_device_id", "computed_by"])
-    for session in sleep.loc[sleep.main & sleep.eligible].itertuples():
+    for session in sleep.loc[sleep.main.astype(bool)].itertuples():
         samples = (
             hr.loc[(hr.time_utc >= session.start_utc) & (hr.time_utc < session.end_utc)]
             .sort_values("time_utc")
             .copy()
         )
-        if len(samples) < 6:
-            continue
-        samples["support_end"] = (
-            pd.concat(
-                [samples.time_utc.shift(-1), samples.time_utc + pd.Timedelta(minutes=5)], axis=1
-            )
-            .min(axis=1)
-            .clip(upper=session.end_utc)
+        result = {
+            "date_local": session.date_local,
+            "bpm": None,
+            "physical_device_id": None,
+            "computed_by": None,
+        }
+        if not session.eligible:
+            reason = "main sleep session not eligible"
+        elif samples.empty:
+            reason = "no heart rate samples during main sleep"
+        elif len(samples) < 6:
+            reason = "fewer than six heart rate samples"
+        else:
+            reason = "no supported 30-minute window"
+            best = resting_window(samples, session.end_utc)
+            if best is not None:
+                result.update(best)
+        result["quality"] = (
+            "derived from main sleep" if result["bpm"] is not None else f"missing: {reason}"
         )
-        # The final sample has no confirmed following support.
-        samples.loc[samples.index[-1], "support_end"] = samples.time_utc.iloc[-1]
-        best = None
-        for start in samples.time_utc:
-            end = start + pd.Timedelta(minutes=30)
-            if end > session.end_utc:
-                break
-            window = samples.loc[(samples.time_utc >= start) & (samples.time_utc < end)]
-            if len(window) < 6:
-                continue
-            seconds = (window.support_end.clip(upper=end) - window.time_utc).dt.total_seconds()
-            if seconds.sum() < 24 * 60:
-                continue
-            value = float((window.bpm * seconds).sum() / seconds.sum())
-            if best is None or value < best["bpm"]:
-                best = {
-                    "date_local": session.date_local,
-                    "bpm": value,
-                    "physical_device_id": ", ".join(sorted(set(window.physical_device_id))),
-                    "computed_by": "app",
-                }
-        if best:
-            output.append(best)
-    return pd.DataFrame(output, columns=["date_local", "bpm", "physical_device_id", "computed_by"])
+        output.append(result)
+    return pd.DataFrame(
+        output, columns=["date_local", "bpm", "physical_device_id", "computed_by", "quality"]
+    )
+
+
+def resting_window(samples: pd.DataFrame, sleep_end) -> dict | None:
+    """Lowest supported 30-minute mean; samples arrive in chronological order."""
+    samples["support_end"] = (
+        pd.concat([samples.time_utc.shift(-1), samples.time_utc + pd.Timedelta(minutes=5)], axis=1)
+        .min(axis=1)
+        .clip(upper=sleep_end)
+    )
+    # The final sample has no confirmed following support.
+    samples.loc[samples.index[-1], "support_end"] = samples.time_utc.iloc[-1]
+    best = None
+    for start in samples.time_utc:
+        end = start + pd.Timedelta(minutes=30)
+        if end > sleep_end:
+            break
+        window = samples.loc[(samples.time_utc >= start) & (samples.time_utc < end)]
+        if len(window) < 6:
+            continue
+        seconds = (window.support_end.clip(upper=end) - window.time_utc).dt.total_seconds()
+        if seconds.sum() < 24 * 60:
+            continue
+        value = float((window.bpm * seconds).sum() / seconds.sum())
+        if best is None or value < best["bpm"]:
+            best = {
+                "bpm": value,
+                "physical_device_id": ", ".join(sorted(set(window.physical_device_id))),
+                "computed_by": "app",
+            }
+    return best

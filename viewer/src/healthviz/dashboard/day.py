@@ -10,7 +10,7 @@ from healthviz.analysis.sources import resolve_rows
 from healthviz.archive.values import parse_offset
 from healthviz.dashboard.charts import filtered, hypnogram, local_times, raw_data
 from healthviz.dashboard.context import derived, device_names
-from healthviz.dashboard.format import bpm, count_text, day_text, kcal
+from healthviz.dashboard.format import bpm, count_text, day_text, kcal, resting_text
 from healthviz.dashboard.workouts import workout_list
 
 
@@ -90,6 +90,7 @@ def key_numbers(row):
     ]
     for column, (label, value, text) in zip(columns, values, strict=True):
         column.metric(label, "—" if pd.isna(value) else text(value))
+    st.text(resting_text(row))
     if not row.complete:
         st.caption("Incomplete day: too few hours with heart-rate samples; kept out of averages.")
 
