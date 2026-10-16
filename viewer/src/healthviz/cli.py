@@ -18,8 +18,10 @@ def import_zone(timezone: str | None, config: Path | None) -> ZoneInfo | None:
     the user's zone: the import stops instead of writing every offset as UTC.
     """
     try:
-        saved = load_settings(config).default_timezone if config and config.exists() else None
-        name = timezone or saved
+        name = timezone
+        # An explicit zone wins: a settings file it cannot read must not block it.
+        if name is None and config is not None and config.exists():
+            name = load_settings(config).default_timezone
         if name is None:
             raise SettingsError("give --timezone, or a --config that saves default_timezone")
         return ZoneInfo(name)

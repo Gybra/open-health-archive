@@ -166,6 +166,25 @@ def test_cli_config_that_is_not_there_is_not_utc(tmp_path, capsys):
     assert not (tmp_path / "a").exists()
 
 
+def test_cli_explicit_timezone_ignores_a_broken_config(tmp_path):
+    export = synthetic_export(tmp_path / "input")
+    config = tmp_path / "config.toml"
+    config.write_text("not valid toml [[[\n")
+    argv = [
+        "import",
+        "xiaomi",
+        str(export),
+        "--out",
+        str(tmp_path / "a"),
+        "--timezone",
+        "Europe/Rome",
+        "--config",
+        str(config),
+    ]
+
+    assert main(argv) == 0
+
+
 def test_cli_unreadable_bytes_are_not_blamed_on_the_timezone(tmp_path, capsys):
     export = synthetic_export(tmp_path / "input")
     # Invalid UTF-8, as a truncated or hand-edited vendor export can be.
