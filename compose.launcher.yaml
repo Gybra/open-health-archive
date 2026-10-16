@@ -1,6 +1,7 @@
-# Used by start.sh with compose.yaml. The import container has no network
-# and sees only the export folder (read-only), the archive and the private config.
-# A fixed project name keeps one viewer container wherever the checkout lives.
+# Used by start.sh with compose.yaml. Each import container sees only the export folder
+# (read-only), the archive and the private config; the Xiaomi one also needs the network,
+# for its signed GPX track links. A fixed project name keeps one viewer container
+# wherever the checkout lives.
 name: open-health-archive
 services:
   import:
@@ -28,7 +29,42 @@ services:
       - ${HEALTHVIZ_IMPORT_LABEL:-}
     volumes:
       - type: bind
-        source: ${HEALTHVIZ_IMPORT_DIR:?Choose the Health Connect export folder}
+        source: ${HEALTHVIZ_IMPORT_DIR:?Choose the export folder}
+        target: /import
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HEALTHVIZ_ARCHIVE_DIR:?Choose the archive folder}
+        target: /archive
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ${HEALTHVIZ_CONFIG_DIR:?Choose the private config folder}
+        target: /config
+        bind:
+          create_host_path: false
+  # A Mi Fitness export carries signed links to its GPX tracks, so this one keeps the
+  # default network instead of `none`; the importer only ever fetches those links.
+  import-xiaomi:
+    image: open-health-archive-viewer
+    profiles: [import]
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    command:
+      - healthviz
+      - import
+      - xiaomi
+      - /import
+      - --out
+      - /archive
+      - --config
+      - /config/config.toml
+    volumes:
+      - type: bind
+        source: ${HEALTHVIZ_IMPORT_DIR:?Choose the export folder}
         target: /import
         read_only: true
         bind:

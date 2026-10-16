@@ -188,3 +188,44 @@ def test_cache_override_with_any_name_leaves_its_parent_alone(home):
     )
     assert mkdir.endswith(" oha-cache") and f"src={parent}," in mkdir
     assert oct(parent.stat().st_mode & 0o777) == "0o755"
+
+
+def test_xiaomi_import_reads_the_given_folder(home):
+    export = home / "export"
+    export.mkdir()
+
+    result, log = start(home, "--xiaomi", str(export), answers=answers(home))
+
+    assert result.returncode == 0, result.stderr
+    assert f"IMPORT:{export}\n" in log
+    assert "LABEL:~/export\n" in log
+    run = next(c for c in log.splitlines() if "compose" in c and "run --rm" in c)
+    assert run.endswith(" import-xiaomi")
+
+
+def test_xiaomi_import_keeps_the_saved_health_connect_folder(home):
+    start(home, answers=answers(home))
+    export = home / "export"
+    export.mkdir()
+
+    result, log = start(home, "--xiaomi", str(export), answers="")
+
+    assert result.returncode == 0, result.stderr
+    assert f"IMPORT:{export}\n" in log
+    saved = (home / ".config/healthviz/launcher.conf").read_text()
+    assert f"import_dir={home / 'downloads'}" in saved
+
+
+def test_xiaomi_import_needs_an_existing_folder(home):
+    result, log = start(home, "--xiaomi", str(home / "nowhere"), answers=answers(home))
+
+    assert result.returncode == 1
+    assert "ARGS:" not in log
+
+
+def test_unknown_option_stops_before_docker(home):
+    result, log = start(home, "--nope", answers=answers(home))
+
+    assert result.returncode == 1
+    assert "Unknown option: --nope" in result.stderr
+    assert "ARGS:" not in log
