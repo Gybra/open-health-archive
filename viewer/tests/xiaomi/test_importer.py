@@ -122,3 +122,28 @@ def test_malformed_values_are_redacted(tmp_path, capsys):
     assert "SECRET" not in output.out + output.err
     assert "4242" not in output.out + output.err
     assert "900" not in output.out + output.err
+
+
+def test_cli_config_supplies_the_fallback_timezone(tmp_path):
+    export = synthetic_export(tmp_path / "input")
+    tracks = tmp_path / "tracks"
+    tracks.mkdir()
+    (tracks / "1767258000.gpx").write_bytes(GPX)
+    config = tmp_path / "config.toml"
+    config.write_text('default_timezone = "Europe/Rome"\n')
+    base = ["import", "xiaomi", str(export), "--tracks-dir", str(tracks)]
+
+    assert main([*base, "--out", str(tmp_path / "zone"), "--timezone", "Europe/Rome"]) == 0
+    assert main([*base, "--out", str(tmp_path / "settings"), "--config", str(config)]) == 0
+
+    def heart_rows(root):
+        return [path.read_text() for path in sorted((root / "heart_rate").glob("*.csv"))]
+
+    assert heart_rows(tmp_path / "settings") == heart_rows(tmp_path / "zone")
+
+
+def test_cli_without_a_timezone_or_config_fails(tmp_path, capsys):
+    export = synthetic_export(tmp_path / "input")
+
+    assert main(["import", "xiaomi", str(export), "--out", str(tmp_path / "a")]) == 1
+    assert "import failed: give --timezone or --config" in capsys.readouterr().err
